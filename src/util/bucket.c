@@ -32,8 +32,6 @@ void init_bucket(bucket_t * bucket, bucket_class_e b_class, bucket_type_e b_type
     if (b_class == DEVICE){
         bucket->device = (device_t *)malloc(sizeof(device_t));
     }
-
-    return bucket;
 }
 
 int uniform_bucket_crush(int r, int x, bucket_t * bucket){
