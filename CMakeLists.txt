@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(reph C)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -pthread)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pthread")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 
@@ -43,5 +43,7 @@ add_executable(reph ${MAIN_SOURCES})
 add_executable(client ${CLIENT_SOURCES})
 add_executable(monitor ${MONITOR_SOURCES})
 add_executable(test ${TEST_SOURCES})
+
+add_executable(blah blah.c)
 
 target_link_libraries(monitor pthread)

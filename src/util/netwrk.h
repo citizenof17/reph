@@ -6,6 +6,7 @@
 #define REPH_NETWRK_H
 
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #define DEFAULT_ADDR ("127.0.0.1")
 #define DEFAULT_CLIENT_PORT (1337)
@@ -27,5 +28,11 @@ typedef enum message_type_e {
     GET_MAP_VERSION,
     GET_MAP
 } message_type_e;
+
+typedef struct socket_transfer_t {
+    int sock;
+    pthread_mutex_t mutex;
+} socket_transfer_t;
+
 
 #endif //REPH_NETWRK_H

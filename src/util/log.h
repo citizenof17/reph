@@ -6,6 +6,7 @@
 #define REPH_LOG_H
 
 #include <stdio.h>
+#include <time.h>
 
 void LOG(char* buf);
 

@@ -7,10 +7,13 @@
 #include <getopt.h>
 #include <string.h>
 #include <pthread.h>
+#include <src/util/general.h>
 
 #include "src/util/netwrk.h"
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
+
+int cluster_map_version = 0;
 
 
 int init_config_from_input(addr_port_t * config, int argc, char ** argv) {
@@ -53,19 +56,12 @@ sockaddr_t make_local_addr(addr_port_t config){
     return local_addr;
 }
 
-// TODO: move it from here
-typedef struct params_for_client_t {
-    int sock;
-    int cluster_map_version;
-} params_for_client_t;
-
-
 void * handle_client(void * arg){
-    printf("hello client\n");
     LOG("IN HANDLE CLIENT");
-    params_for_client_t params = *((params_for_client_t *)arg);
+    socket_transfer_t * _params = arg;
     int sock, rc;
-    sock = params.sock;
+    sock = _params->sock;
+    pthread_mutex_unlock(&_params->mutex);
 
     printf("new sock in handler %d\n", sock);
 
@@ -79,7 +75,7 @@ void * handle_client(void * arg){
     LOG("Received some message");
     printf("Received message %d \n", message_type);
 
-    rc = send(sock, &params.cluster_map_version, sizeof(params.cluster_map_version), 0);
+    rc = send(sock, &cluster_map_version, sizeof(cluster_map_version), 0);
     if (rc <= 0) {
         perror("Error calling send(..)");
         return ((void *)EXIT_FAILURE);
@@ -90,11 +86,52 @@ void * handle_client(void * arg){
     return ((void *) EXIT_SUCCESS);
 }
 
-int run_monitor(addr_port_t config){
-    LOG("Running monitor");
-    int cluster_map_version = 0;
+typedef struct client_handler_params_t {
+    int sock;
+    pthread_mutex_t mutex;
+    int cluster_map_version;
+}client_handler_params_t;
 
-    sockaddr_t local_addr = make_local_addr(config);
+void * wait_for_client_connection(void * arg){
+    client_handler_params_t *_params = arg;
+    pthread_mutex_unlock(&_params->mutex);
+    int sock = _params->sock;
+    int rc;
+
+    printf("SOCK VALUE IS %d\n", sock);
+
+    while (1){
+        printf("Cluster map version is %d\n", cluster_map_version);
+
+        int new_sock = accept(sock, NULL, NULL);
+        if (new_sock <= 0){
+            perror("Couldn't create new_sock");
+            return ((void *) EXIT_FAILURE);
+        }
+        socket_transfer_t inner_params;
+        inner_params.sock = new_sock;
+
+        pthread_mutex_init(&inner_params.mutex, NULL);
+        pthread_mutex_lock(&inner_params.mutex);
+
+        pthread_t thread;
+        printf("new socket %d\n", new_sock);
+        rc = pthread_create(&thread, NULL, handle_client, &inner_params);
+        if (rc != 0){
+            perror("Error creating thread");
+            return ((void *)EXIT_FAILURE);
+        }
+
+        pthread_mutex_lock(&inner_params.mutex);
+
+        cluster_map_version++;
+
+        pthread_join(thread, NULL);
+        close(new_sock);
+    }
+}
+
+int prepare_socket(int * rsock, sockaddr_t local_addr){
     int sock, rc;
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -103,40 +140,67 @@ int run_monitor(addr_port_t config){
         return (EXIT_FAILURE);
     }
 
+    int enable = 1;
+    rc = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+    if (rc != 0){
+        perror("setsockopt(SO_REUSEADDR) failed");
+        return (EXIT_FAILURE);
+    }
+
     rc = bind(sock, (struct sockaddr *)&local_addr, sizeof(local_addr));
-    if (rc < 0) {
+    if (rc != 0) {
         perror("Error calling bind(..)");
         return (EXIT_FAILURE);
     }
 
     // setting maximum number of connections
     rc = listen(sock, MAX_CLIENTS);
-    if (rc) {
+    if (rc != 0) {
         perror("Error calling listen(..)");
         return (EXIT_FAILURE);
     }
 
-    while (1){
-        printf("Cluster map version is %d\n", cluster_map_version);
+    *rsock = sock;
+    printf("RSOCK VALUES %d\n", *rsock);
 
-        int new_sock = accept(sock, NULL, NULL);
-        params_for_client_t params = {
-                .sock = new_sock,
-                .cluster_map_version = cluster_map_version,
-        };
-        pthread_t thread;
-        printf("new socker %d\n", new_sock);
-        rc = pthread_create(&thread, NULL, handle_client, &params);
-        if (rc != 0){
-            perror("Error creating thread");
-            return (EXIT_FAILURE);
-        }
-        cluster_map_version++;
+    return (EXIT_SUCCESS);
+}
 
-        pthread_join(thread, NULL);
+int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) {
+    int sock, rc;
+    sockaddr_t local_addr = make_local_addr(config);
+    rc = prepare_socket(&sock, local_addr);
+    RETURN_ON_FAILURE(rc);
 
+
+    client_handler_params_t params;
+    params.sock = sock;
+    pthread_mutex_init(&params.mutex, NULL);
+    pthread_mutex_lock(&params.mutex);
+
+    rc = pthread_create(client_handler_thread, NULL, wait_for_client_connection, &params);
+
+    if (rc != 0) {
+        perror("Error creating thread");
+        close(sock);
         return (EXIT_FAILURE);
     }
+
+    pthread_mutex_lock(&params.mutex);
+
+    return (EXIT_SUCCESS);
+}
+
+int run_monitor(addr_port_t config){
+    LOG("Running monitor");
+    int rc;
+
+    pthread_t client_handler_thread;
+    rc = start_client_handler(config, &client_handler_thread);
+    RETURN_ON_FAILURE(rc);
+
+    pthread_join(client_handler_thread, NULL);
+    return (EXIT_SUCCESS);
 }
 
 

@@ -7,10 +7,13 @@
 #include <getopt.h>
 #include <string.h>
 #include <stdlib.h>
+#include <src/util/general.h>
 
 #include "src/util/log.h"
 #include "src/util/netwrk.h"
 #include "src/util/mysleep.h"
+
+int cluster_map_version = 0;
 
 typedef struct client_config_t {
     addr_port_t self;
@@ -81,7 +84,7 @@ int get_map_version(int sock, int * new_map_version){
     LOG("SEND REQUEST");
 
     rc = recv(sock, new_map_version, sizeof(*new_map_version), 0);
-    if (rc <= 0){
+    if (rc < 0){
         perror("Error receiving get_map_version");
         return (EXIT_FAILURE);
     }
@@ -95,43 +98,59 @@ int get_cluster_map(int sock){
     return (EXIT_SUCCESS);
 }
 
+int connect_to_peer(int * rsock, addr_port_t monitor){
+    struct sockaddr_in peer = make_peer(monitor);
+    int sock, rc;
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("Error calling socket(..)");
+        return (EXIT_FAILURE);
+    }
+
+    rc = connect(sock, (struct sockaddr *)&peer, sizeof(peer));
+    if (rc != 0) {
+        perror("Error calling connect(..)");
+        return (EXIT_FAILURE);
+    }
+
+    *rsock = sock;
+    return (EXIT_SUCCESS);
+}
+
+int update_map_if_needed(client_config_t config){
+    int sock, rc;
+    rc = connect_to_peer(&sock, config.monitor);
+    RETURN_ON_FAILURE(rc);
+
+    LOG("Client connected to monitor");
+
+    int new_map_version;
+    rc = get_map_version(sock, &new_map_version);
+    RETURN_ON_FAILURE(rc);
+
+    printf("New cluster map version %d\n", new_map_version);
+
+    if (new_map_version > cluster_map_version){
+        LOG("Cluster map version is updated, need to refresh its content");
+        cluster_map_version = new_map_version;
+        rc = get_cluster_map(sock);
+        RETURN_ON_FAILURE(rc);
+    }
+
+    close(sock);
+    return (EXIT_SUCCESS);
+}
+
 int run_client(client_config_t config){
 
-    int cluster_map_version = 0;
 
     while(1){
-        struct sockaddr_in peer = make_peer(config.monitor);
         int sock, rc;
+        rc = update_map_if_needed(config);
+        RETURN_ON_FAILURE(rc);
 
-        sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) {
-            perror("Error calling socket(..)");
-            return (EXIT_FAILURE);
-        }
-
-        rc = connect(sock, (struct sockaddr *)&peer, sizeof(peer));
-        if (rc != 0) {
-            perror("Error calling connect(..)");
-            return (EXIT_FAILURE);
-        }
-
-        LOG("Client connected to monitor");
-
-        int new_map_version;
-        rc = get_map_version(sock, &new_map_version);
-        if (rc == EXIT_FAILURE){
-            return (EXIT_FAILURE);
-        }
-        printf("New cluster map version %d\n", new_map_version);
-
-        if (new_map_version > cluster_map_version){
-            LOG("Cluster map version is updated, need to refresh its content");
-            cluster_map_version = new_map_version;
-            rc = get_cluster_map(sock);
-            if (rc == EXIT_FAILURE){
-                return (EXIT_FAILURE);
-            }
-        }
+        mysleep(5000);
     }
 }
 
