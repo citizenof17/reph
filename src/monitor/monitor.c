@@ -21,12 +21,12 @@ cluster_map_t * cluster_map;
 int init_config_from_input(addr_port_t * config, int argc, char ** argv) {
     int c;
 
-    while ((c = getopt(argc, argv, "s:t:")) != -1) {
+    while ((c = getopt(argc, argv, "a:p:")) != -1) {
         switch (c) {
-            case 's':
+            case 'a':
                 strcpy(config->addr, optarg);
                 break;
-            case 't':
+            case 'p':
                 config->port = atoi(optarg);
                 break;
             case '?':
@@ -47,21 +47,8 @@ addr_port_t make_default_config() {
     return config;
 }
 
-// TODO: ensure there is not error in memory cleaning and returning local variable
-sockaddr_t make_local_addr(addr_port_t config){
-    sockaddr_t local_addr;
-    memset(&local_addr, 0, sizeof(sockaddr_t));
-    local_addr.sin_family = AF_INET;
-    local_addr.sin_port = htons(config.port);
-    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    return local_addr;
-}
-
 void * handle_client(void * arg){
-    LOG("IN HANDLE CLIENT");
     socket_transfer_t * _params = arg;
-
     int sock, rc;
     sock = _params->sock;
     pthread_mutex_unlock(&_params->mutex);
@@ -96,9 +83,9 @@ void * handle_client(void * arg){
 
 void * wait_for_client_connection(void * arg){
     socket_transfer_t *_params = arg;
+    int sock, rc;
+    sock = _params->sock;
     pthread_mutex_unlock(&_params->mutex);
-    int sock = _params->sock;
-    int rc;
 
     printf("SOCK VALUE IS %d\n", sock);
 
@@ -127,38 +114,10 @@ void * wait_for_client_connection(void * arg){
     }
 }
 
-int prepare_socket(int * rsock, sockaddr_t local_addr){
-    int sock, rc;
-
-    rc = make_default_socket(&sock);
-    RETURN_ON_FAILURE(rc);
-
-    rc = make_socket_reusable(&sock);
-    RETURN_ON_FAILURE(rc);
-
-    rc = bind(sock, (struct sockaddr *)&local_addr, sizeof(local_addr));
-    if (rc != 0) {
-        perror("Error calling bind(..)");
-        return (EXIT_FAILURE);
-    }
-
-    // setting maximum number of connections
-    rc = listen(sock, MAX_CLIENTS);
-    if (rc != 0) {
-        perror("Error calling listen(..)");
-        return (EXIT_FAILURE);
-    }
-
-    *rsock = sock;
-    printf("RSOCK VALUE %d\n", *rsock);
-
-    return (EXIT_SUCCESS);
-}
-
 int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) {
     int sock, rc;
     sockaddr_t local_addr = make_local_addr(config);
-    rc = prepare_socket(&sock, local_addr);
+    rc = prepare_reusable_listening_socket(&sock, local_addr);
     RETURN_ON_FAILURE(rc);
 
     socket_transfer_t params;
@@ -186,12 +145,30 @@ void update_cluster_map(){
     cluster_map_version++;
 }
 
+void poll_osd(){
+    LOG("NOT IMPLEMENTED");
+}
+
+int start_osd_poller(pthread_t * osd_thread){
+    LOG("NOT IMPLEMENTED");
+
+//    for (int i = 0; i < known_osd_count; i++){
+//        poll_osd(known_osd_configs[i]);
+//    }
+
+    return (EXIT_SUCCESS);
+}
+
 int run_monitor(addr_port_t config){
     LOG("Running monitor");
     int rc;
 
     pthread_t client_handler_thread;
     rc = start_client_handler(config, &client_handler_thread);
+    RETURN_ON_FAILURE(rc);
+
+    pthread_t osd_poller;
+    rc = start_osd_poller(&osd_poller);
     RETURN_ON_FAILURE(rc);
 
     // Mock map updates by updating it every ..X secs
@@ -201,6 +178,7 @@ int run_monitor(addr_port_t config){
     }
 
     pthread_join(client_handler_thread, NULL);
+    pthread_join(osd_poller, NULL);
     return (EXIT_SUCCESS);
 }
 

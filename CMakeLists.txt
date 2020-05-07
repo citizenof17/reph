@@ -18,6 +18,7 @@ set(UTIL_SOURCES
         src/util/mysleep.c
         src/util/netwrk.c
         src/util/general.c
+        src/crush.c
 )
 
 set(TEST_SOURCES
@@ -40,10 +41,16 @@ set(MONITOR_SOURCES
         ${UTIL_SOURCES}
         )
 
+set(OSD_SOURCES
+        src/storage/osd.c
+        ${UTIL_SOURCES}
+        )
+
 
 add_executable(reph ${MAIN_SOURCES})
 add_executable(client ${CLIENT_SOURCES})
 add_executable(monitor ${MONITOR_SOURCES})
+add_executable(osd ${OSD_SOURCES})
 add_executable(test ${TEST_SOURCES})
 
 add_executable(blah blah.c)

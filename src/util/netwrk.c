@@ -7,7 +7,74 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
 #include "netwrk.h"
+#include "general.h"
+
+// TODO: ensure there is not error in memory cleaning and returning local variable
+sockaddr_t make_local_addr(addr_port_t config){
+    sockaddr_t local_addr;
+    memset(&local_addr, 0, sizeof(sockaddr_t));
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(config.port);
+    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    return local_addr;
+}
+
+int prepare_reusable_listening_socket(int * rsock, sockaddr_t local_addr){
+    int sock, rc;
+
+    rc = make_default_socket(&sock);
+    RETURN_ON_FAILURE(rc);
+
+    rc = make_socket_reusable(&sock);
+    RETURN_ON_FAILURE(rc);
+
+    rc = bind(sock, (struct sockaddr *)&local_addr, sizeof(local_addr));
+    if (rc != 0) {
+        perror("Error calling bind(..)");
+        return (EXIT_FAILURE);
+    }
+
+    // setting maximum number of connections
+    rc = listen(sock, MAX_CLIENTS);
+    if (rc != 0) {
+        perror("Error calling listen(..)");
+        return (EXIT_FAILURE);
+    }
+
+    *rsock = sock;
+    printf("RSOCK VALUE %d\n", *rsock);
+
+    return (EXIT_SUCCESS);
+}
+
+sockaddr_t make_peer(addr_port_t peer_config){
+    sockaddr_t peer;
+    peer.sin_family = AF_INET;
+    peer.sin_port = htons(peer_config.port);
+    peer.sin_addr.s_addr = inet_addr(peer_config.addr);
+
+    return peer;
+}
+
+int connect_to_peer(int * rsock, addr_port_t peer_config){
+    sockaddr_t peer = make_peer(peer_config);
+    int sock, rc;
+
+    rc = make_default_socket(&sock);
+    RETURN_ON_FAILURE(rc);
+
+    rc = make_socket_reusable(&sock);
+    RETURN_ON_FAILURE(rc);
+
+    rc = sconnect(sock, &peer);
+    RETURN_ON_FAILURE(rc);
+
+    *rsock = sock;
+    return (EXIT_SUCCESS);
+}
 
 int make_default_socket(int * sock){
     if ((*sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -62,7 +129,7 @@ int saccept(int sock, int * new_sock){
     return (EXIT_SUCCESS);
 }
 
-int sconnect(int sock, struct sockaddr_in * peer){
+int sconnect(int sock, sockaddr_t * peer){
     int rc = connect(sock, (struct sockaddr *)peer, sizeof(*peer));
     if (rc != 0) {
         perror("Error calling connect(..)");

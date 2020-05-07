@@ -17,6 +17,7 @@
 // Version starts from 0, thus -1 is always outdated and will cause local map update
 int cluster_map_version = -1;
 char * plane_cluster_map;
+cluster_map_t * cluster_map;
 
 typedef struct client_config_t {
     addr_port_t self;
@@ -64,16 +65,6 @@ client_config_t make_default_config(){
     return config;
 }
 
-// TODO: ensure there is not error in memory cleaning and returning local variable
-sockaddr_t make_peer(addr_port_t peer_config){
-    sockaddr_t peer;
-    peer.sin_family = AF_INET;
-    peer.sin_port = htons(peer_config.port);
-    peer.sin_addr.s_addr = inet_addr(peer_config.addr);
-
-    return peer;
-}
-
 int get_map_version(int sock, int * new_map_version){
     message_type_e message = GET_MAP_VERSION;
     int rc;
@@ -97,8 +88,8 @@ int get_cluster_map(int sock){
     RETURN_ON_FAILURE(rc);
     LOG("Send request for a new map version");
 
-    // TODO: Probably you will read more than expected from that socket, be careful
-    //  here
+    // TODO: Probably you will read more than expected from that socket (because
+    //  DEFAULT_MAP_SIZE is more than actual map size is), be careful here
     char buf[DEFAULT_MAP_SIZE];
     rc = srecv(sock, buf, DEFAULT_MAP_SIZE);
     RETURN_ON_FAILURE(rc);
@@ -108,23 +99,6 @@ int get_cluster_map(int sock){
     strcpy(plane_cluster_map, buf);
     printf("New cluster map %s\n", plane_cluster_map);
 
-    return (EXIT_SUCCESS);
-}
-
-int connect_to_peer(int * rsock, addr_port_t monitor){
-    struct sockaddr_in peer = make_peer(monitor);
-    int sock, rc;
-
-    rc = make_default_socket(&sock);
-    RETURN_ON_FAILURE(rc);
-
-    rc = make_socket_reusable(&sock);
-    RETURN_ON_FAILURE(rc);
-
-    rc = sconnect(sock, &peer);
-    RETURN_ON_FAILURE(rc);
-
-    *rsock = sock;
     return (EXIT_SUCCESS);
 }
 
@@ -156,6 +130,8 @@ int update_map_if_needed(client_config_t config){
         cluster_map_version = new_map_version;
         rc = get_cluster_map(sock);
         RETURN_ON_FAILURE(rc);
+
+        cluster_map = build_map_from_string(plane_cluster_map);
     }
 
     send_bye(sock);
@@ -180,6 +156,7 @@ int main(int argc, char ** argv){
     init_config_from_input(&config, argc, argv);
 
     plane_cluster_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
+    cluster_map = (cluster_map_t *)malloc(sizeof(cluster_map_t));
 
     return run_client(config);
 }
