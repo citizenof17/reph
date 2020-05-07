@@ -16,6 +16,8 @@ set(UTIL_SOURCES
         src/util/hash.c
         src/util/device.c
         src/util/mysleep.c
+        src/util/netwrk.c
+        src/util/general.c
 )
 
 set(TEST_SOURCES

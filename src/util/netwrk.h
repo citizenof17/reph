@@ -25,6 +25,7 @@ typedef struct message_t {
 } message_t;
 
 typedef enum message_type_e {
+    BYE,
     GET_MAP_VERSION,
     GET_MAP
 } message_type_e;
@@ -34,5 +35,16 @@ typedef struct socket_transfer_t {
     pthread_mutex_t mutex;
 } socket_transfer_t;
 
+void init_socket_transfer(socket_transfer_t * transfer, int sock);
+
+int make_default_socket(int * sock);
+int make_socket_reusable(const int * sock);
+
+// Simple XXXX, with error handling, to remove duplicating code (error handling)
+int ssend(int sock, void * message, size_t size);
+int srecv(int sock, void * message, size_t size);
+int saccept(int sock, int * new_sock);
+
+int sconnect(int sock, struct sockaddr_in * peer);
 
 #endif //REPH_NETWRK_H

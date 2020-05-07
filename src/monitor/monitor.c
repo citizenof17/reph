@@ -8,13 +8,15 @@
 #include <string.h>
 #include <pthread.h>
 #include <src/util/general.h>
+#include <src/util/cluster_map.h>
 
 #include "src/util/netwrk.h"
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
 
 int cluster_map_version = 0;
-
+char * plane_cluster_map;
+cluster_map_t * cluster_map;
 
 int init_config_from_input(addr_port_t * config, int argc, char ** argv) {
     int c;
@@ -59,41 +61,41 @@ sockaddr_t make_local_addr(addr_port_t config){
 void * handle_client(void * arg){
     LOG("IN HANDLE CLIENT");
     socket_transfer_t * _params = arg;
+
     int sock, rc;
     sock = _params->sock;
     pthread_mutex_unlock(&_params->mutex);
 
-    printf("new sock in handler %d\n", sock);
+    message_type_e message_type = GET_MAP;
 
-    message_type_e message_type;
-    rc = recv(sock, &message_type, sizeof(message_type), 0);
-    if (rc <= 0) {
-        printf("Failed\n");
-        return ((void *)EXIT_FAILURE);
+    while (message_type != BYE){
+        rc = srecv(sock, &message_type, sizeof(message_type));
+        VOID_RETURN_ON_FAILURE(rc);
+        printf("Received message %d \n", message_type);
+
+        switch(message_type){
+            case GET_MAP_VERSION:
+                rc = ssend(sock, &cluster_map_version, sizeof(cluster_map_version));
+                VOID_RETURN_ON_FAILURE(rc);
+                LOG("Send map version");
+                break;
+            case GET_MAP:
+                rc = ssend(sock, plane_cluster_map, strlen(plane_cluster_map));
+                VOID_RETURN_ON_FAILURE(rc);
+                LOG("Send map");
+                break;
+            case BYE:
+                LOG("End of chat, bye");
+            default:
+                break;
+        }
     }
-
-    LOG("Received some message");
-    printf("Received message %d \n", message_type);
-
-    rc = send(sock, &cluster_map_version, sizeof(cluster_map_version), 0);
-    if (rc <= 0) {
-        perror("Error calling send(..)");
-        return ((void *)EXIT_FAILURE);
-    }
-
-    LOG("SEND VERSION");
 
     return ((void *) EXIT_SUCCESS);
 }
 
-typedef struct client_handler_params_t {
-    int sock;
-    pthread_mutex_t mutex;
-    int cluster_map_version;
-}client_handler_params_t;
-
 void * wait_for_client_connection(void * arg){
-    client_handler_params_t *_params = arg;
+    socket_transfer_t *_params = arg;
     pthread_mutex_unlock(&_params->mutex);
     int sock = _params->sock;
     int rc;
@@ -103,19 +105,14 @@ void * wait_for_client_connection(void * arg){
     while (1){
         printf("Cluster map version is %d\n", cluster_map_version);
 
-        int new_sock = accept(sock, NULL, NULL);
-        if (new_sock <= 0){
-            perror("Couldn't create new_sock");
-            return ((void *) EXIT_FAILURE);
-        }
-        socket_transfer_t inner_params;
-        inner_params.sock = new_sock;
+        int new_sock;
+        rc = saccept(sock, &new_sock);
+        VOID_RETURN_ON_FAILURE(rc);
 
-        pthread_mutex_init(&inner_params.mutex, NULL);
-        pthread_mutex_lock(&inner_params.mutex);
+        socket_transfer_t inner_params;
+        init_socket_transfer(&inner_params, new_sock);
 
         pthread_t thread;
-        printf("new socket %d\n", new_sock);
         rc = pthread_create(&thread, NULL, handle_client, &inner_params);
         if (rc != 0){
             perror("Error creating thread");
@@ -124,8 +121,7 @@ void * wait_for_client_connection(void * arg){
 
         pthread_mutex_lock(&inner_params.mutex);
 
-        cluster_map_version++;
-
+//        cluster_map_version++;
         pthread_join(thread, NULL);
         close(new_sock);
     }
@@ -134,18 +130,11 @@ void * wait_for_client_connection(void * arg){
 int prepare_socket(int * rsock, sockaddr_t local_addr){
     int sock, rc;
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror("Error calling socket(..)");
-        return (EXIT_FAILURE);
-    }
+    rc = make_default_socket(&sock);
+    RETURN_ON_FAILURE(rc);
 
-    int enable = 1;
-    rc = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
-    if (rc != 0){
-        perror("setsockopt(SO_REUSEADDR) failed");
-        return (EXIT_FAILURE);
-    }
+    rc = make_socket_reusable(&sock);
+    RETURN_ON_FAILURE(rc);
 
     rc = bind(sock, (struct sockaddr *)&local_addr, sizeof(local_addr));
     if (rc != 0) {
@@ -161,7 +150,7 @@ int prepare_socket(int * rsock, sockaddr_t local_addr){
     }
 
     *rsock = sock;
-    printf("RSOCK VALUES %d\n", *rsock);
+    printf("RSOCK VALUE %d\n", *rsock);
 
     return (EXIT_SUCCESS);
 }
@@ -172,11 +161,8 @@ int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) 
     rc = prepare_socket(&sock, local_addr);
     RETURN_ON_FAILURE(rc);
 
-
-    client_handler_params_t params;
-    params.sock = sock;
-    pthread_mutex_init(&params.mutex, NULL);
-    pthread_mutex_lock(&params.mutex);
+    socket_transfer_t params;
+    init_socket_transfer(&params, sock);
 
     rc = pthread_create(client_handler_thread, NULL, wait_for_client_connection, &params);
 
@@ -191,6 +177,15 @@ int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) 
     return (EXIT_SUCCESS);
 }
 
+void update_cluster_map(){
+// TODO: This is mocked for now. This function should
+    printf("Updated cluster map version from %d to %d\n",
+           cluster_map_version, cluster_map_version + 1);
+    gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
+    printf("New cluster map: %s\n", plane_cluster_map);
+    cluster_map_version++;
+}
+
 int run_monitor(addr_port_t config){
     LOG("Running monitor");
     int rc;
@@ -198,6 +193,12 @@ int run_monitor(addr_port_t config){
     pthread_t client_handler_thread;
     rc = start_client_handler(config, &client_handler_thread);
     RETURN_ON_FAILURE(rc);
+
+    // Mock map updates by updating it every ..X secs
+    for (int i = 0; i < 100; i++){
+        mysleep(30000);
+        update_cluster_map();
+    }
 
     pthread_join(client_handler_thread, NULL);
     return (EXIT_SUCCESS);
@@ -209,6 +210,13 @@ int main(int argc, char ** argv){
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
+    plane_cluster_map = get_string_map_representation(NULL);
+    // TODO: Remove this and read real config from file
+    gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
+
+    cluster_map = build_map_from_string(plane_cluster_map);
+
+    // TODO: free all allocated memory
     return run_monitor(config);
 }
 

@@ -8,12 +8,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <src/util/general.h>
+#include <src/util/cluster_map.h>
 
 #include "src/util/log.h"
 #include "src/util/netwrk.h"
 #include "src/util/mysleep.h"
 
-int cluster_map_version = 0;
+// Version starts from 0, thus -1 is always outdated and will cause local map update
+int cluster_map_version = -1;
+char * plane_cluster_map;
 
 typedef struct client_config_t {
     addr_port_t self;
@@ -72,29 +75,39 @@ sockaddr_t make_peer(addr_port_t peer_config){
 }
 
 int get_map_version(int sock, int * new_map_version){
-    int rc;
     message_type_e message = GET_MAP_VERSION;
+    int rc;
 
-    rc = send(sock, &message, sizeof(message), 0);
-    if (rc <= 0){
-        perror("Error sending get_map_version");
-        return (EXIT_FAILURE);
-    }
+    rc = ssend(sock, &message, sizeof(message));
+    RETURN_ON_FAILURE(rc);
+    LOG("Send request for map version");
 
-    LOG("SEND REQUEST");
-
-    rc = recv(sock, new_map_version, sizeof(*new_map_version), 0);
-    if (rc < 0){
-        perror("Error receiving get_map_version");
-        return (EXIT_FAILURE);
-    }
-
-    LOG("RECEIVED CLUSTER VERSION");
+    rc = srecv(sock, new_map_version, sizeof(*new_map_version));
+    RETURN_ON_FAILURE(rc);
+    LOG("Received new map version");
 
     return (EXIT_SUCCESS);
 }
 
 int get_cluster_map(int sock){
+    int rc;
+    message_type_e message = GET_MAP;
+
+    rc = ssend(sock, &message, sizeof(message));
+    RETURN_ON_FAILURE(rc);
+    LOG("Send request for a new map version");
+
+    // TODO: Probably you will read more than expected from that socket, be careful
+    //  here
+    char buf[DEFAULT_MAP_SIZE];
+    rc = srecv(sock, buf, DEFAULT_MAP_SIZE);
+    RETURN_ON_FAILURE(rc);
+    LOG("Received new plane cluster map representation");
+
+    printf("Old cluster map %s\n", plane_cluster_map);
+    strcpy(plane_cluster_map, buf);
+    printf("New cluster map %s\n", plane_cluster_map);
+
     return (EXIT_SUCCESS);
 }
 
@@ -102,19 +115,26 @@ int connect_to_peer(int * rsock, addr_port_t monitor){
     struct sockaddr_in peer = make_peer(monitor);
     int sock, rc;
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror("Error calling socket(..)");
-        return (EXIT_FAILURE);
-    }
+    rc = make_default_socket(&sock);
+    RETURN_ON_FAILURE(rc);
 
-    rc = connect(sock, (struct sockaddr *)&peer, sizeof(peer));
-    if (rc != 0) {
-        perror("Error calling connect(..)");
-        return (EXIT_FAILURE);
-    }
+    rc = make_socket_reusable(&sock);
+    RETURN_ON_FAILURE(rc);
+
+    rc = sconnect(sock, &peer);
+    RETURN_ON_FAILURE(rc);
 
     *rsock = sock;
+    return (EXIT_SUCCESS);
+}
+
+int send_bye(int sock){
+    message_type_e message = BYE;
+    int rc = ssend(sock, &message, sizeof(message));
+    RETURN_ON_FAILURE(rc);
+
+    LOG("Send bye");
+
     return (EXIT_SUCCESS);
 }
 
@@ -138,19 +158,19 @@ int update_map_if_needed(client_config_t config){
         RETURN_ON_FAILURE(rc);
     }
 
+    send_bye(sock);
     close(sock);
+
     return (EXIT_SUCCESS);
 }
 
 int run_client(client_config_t config){
-
-
     while(1){
-        int sock, rc;
+        int rc;
         rc = update_map_if_needed(config);
         RETURN_ON_FAILURE(rc);
 
-        mysleep(5000);
+        mysleep(10000);
     }
 }
 
@@ -159,7 +179,9 @@ int main(int argc, char ** argv){
     client_config_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
-    return run_client(config);;
+    plane_cluster_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
+
+    return run_client(config);
 }
 
 
