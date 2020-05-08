@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(reph C)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pthread")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 

@@ -12,7 +12,7 @@ map_entry_t gen_dummy_device_map_entry(){
         .class = DEVICE,
         .type = BUCKET_UNIFORM,
         .capacity = 100,
-        .port = 141,
+        .port = 4242,
         .addr = "127.0.0.1",
     };
     return map_entry;
@@ -28,6 +28,7 @@ map_entry_t gen_dummy_map(){
     map_entry.inner = (map_entry_t *)malloc(sizeof(map_entry_t) * INNER_SIZE);
     for (int i = 0; i < INNER_SIZE; i++){
         map_entry.inner[i] = gen_dummy_device_map_entry();
+        map_entry.inner[i].port += i;
     }
 
     return map_entry;
@@ -55,7 +56,7 @@ void build_map_bucket(bucket_t * bucket, map_entry_t map_entry){
     }
 
     for (int i = 0; i < map_entry.inner_size; i++) {
-        build_map_bucket(&bucket->inner_buckets[i], map_entry.inner[i]);
+        build_map_bucket(bucket->inner_buckets[i], map_entry.inner[i]);
     }
 }
 

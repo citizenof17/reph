@@ -7,14 +7,22 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "netwrk.h"
 
 #define ADDR_SIZE (16)
 
+typedef enum state_e {
+    UNKNOWN,
+    UP,
+    DOWN
+} state_e;
+
+
 // This should be a separate server that stores data (in some simple fashion, e.g. hash map)
 typedef struct device_t {
+    state_e state;
     int capacity;
-    int port;
-    char addr[ADDR_SIZE];
+    addr_port_t location;
 } device_t;
 
 void init_device(device_t * device, int capacity, int port, char *addr);

@@ -6,8 +6,8 @@
 
 void init_device(device_t * device, int capacity, int port, char *addr){
     device->capacity = capacity;
-    device->port = port;
-    strcpy(device->addr, addr);
+    device->location.port = port;
+    strcpy(device->location.addr, addr);
 }
 
 device_t * make_device(int capacity, int port, char *addr){

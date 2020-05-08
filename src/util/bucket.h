@@ -24,25 +24,25 @@ typedef enum bucket_type_e {
 } bucket_type_e;
 
 typedef struct bucket_t {
-    bucket_type_e bucket_type;
-    bucket_class_e bucket_class;
+    bucket_type_e type;
+    bucket_class_e class;
+    device_t * device;
+    int size;
+    struct bucket_t ** inner_buckets;
+
+    void * _impl;
     int (*c) (int r, int x, struct bucket_t *); // function used to calculate CRUSH
                                                 // from input value of x and a
                                                 // replica number r
-    device_t * device;
-    // This probably should be changed to pointers array (defined with **)
-    struct bucket_t * inner_buckets;
-
-    void * _impl;
 } bucket_t;
 
 typedef struct uniform_bucket_t {
     int weight;
     int size;
-    bucket_t * buckets;
+    bucket_t ** buckets;
 } uniform_bucket_t;
 
-void init_bucket(bucket_t * ,bucket_class_e, bucket_type_e, int bucket_size);
+void init_bucket(bucket_t *, bucket_class_e, bucket_type_e, int bucket_size);
 //void init_uniform_bucket(bucket_t * bucket);
 
 #endif //REPH_BUCKET_H

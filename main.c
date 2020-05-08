@@ -12,11 +12,11 @@ int main() {
 
     bucket_t * bucket = cluster_map->root;
 
-    printf("%d %d %d\n", bucket->bucket_class, bucket->bucket_type,
+    printf("%d %d %d\n", bucket->class, bucket->type,
            bucket->c(1, 1, cluster_map->root));
 
     for (int i = 0; i < INNER_SIZE; i++) {
-        device_t device = *bucket->inner_buckets[i].device;
+        device_t device = *bucket->inner_buckets[i]->device;
         printf("%d %d\n", device.port, device.capacity);
     }
 

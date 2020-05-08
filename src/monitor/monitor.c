@@ -14,6 +14,8 @@
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
 
+#define HEALTH_CHECK_DELAY (60 * 1000)  // ms to wait -> 1 min
+
 int cluster_map_version = 0;
 char * plane_cluster_map;
 cluster_map_t * cluster_map;
@@ -137,7 +139,9 @@ int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) 
 }
 
 void update_cluster_map(){
-// TODO: This is mocked for now. This function should
+// TODO: This is mocked for now. This function should update plane representation of
+//  cluster map to reflect actual state of devices
+    LOG("Updating cluster map");
     printf("Updated cluster map version from %d to %d\n",
            cluster_map_version, cluster_map_version + 1);
     gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
@@ -145,17 +149,72 @@ void update_cluster_map(){
     cluster_map_version++;
 }
 
-void poll_osd(){
-    LOG("NOT IMPLEMENTED");
+int send_health_check(int sock){
+    message_type_e message = HEALTH_CHECK;
+    int ALIVE = 1;
+
+    int rc;
+    rc = ssend(sock, &message, sizeof(message));
+    if (rc != (EXIT_SUCCESS)){
+        return !ALIVE;
+    }
+
+    int res;
+    rc = srecv(sock, &res, sizeof(res));
+    if (rc != (EXIT_SUCCESS)){
+        return !ALIVE;
+    }
+
+    return ALIVE;
+}
+
+int poll_osd(device_t * device){
+    state_e old_state = device->state;
+
+    device->state = UNKNOWN;
+
+    int sock, rc;
+    rc = connect_to_peer(&sock, device->location);
+    if (rc != (EXIT_SUCCESS)){
+        device->state = DOWN;
+        perror("Error connecting to peer");
+    }
+    else{
+        int alive = send_health_check(sock);
+        if (!alive){
+            device->state = DOWN;
+        }
+    }
+
+    return old_state != device->state;
+}
+
+int dfs_check_devices(bucket_t * bucket){
+    int state_changed = 0;
+    if (bucket->class == DEVICE){
+        state_changed |= poll_osd(bucket->device);
+    }
+    else{
+        for (int i = 0; i < bucket->size; i++){
+            state_changed |= dfs_check_devices(bucket->inner_buckets[i]);
+        }
+    }
+    return state_changed;
+}
+
+_Noreturn void * osd_poller(void * arg){
+    while(1){
+        int state_changed = dfs_check_devices(cluster_map->root);
+        if (state_changed) {
+            update_cluster_map();
+        }
+        mysleep(HEALTH_CHECK_DELAY);
+    }
 }
 
 int start_osd_poller(pthread_t * osd_thread){
-    LOG("NOT IMPLEMENTED");
-
-//    for (int i = 0; i < known_osd_count; i++){
-//        poll_osd(known_osd_configs[i]);
-//    }
-
+    int rc = pthread_create(osd_thread, NULL, osd_poller, NULL);
+    RETURN_ON_FAILURE(rc);
     return (EXIT_SUCCESS);
 }
 
@@ -182,9 +241,7 @@ int run_monitor(addr_port_t config){
     return (EXIT_SUCCESS);
 }
 
-
 int main(int argc, char ** argv){
-
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
