@@ -10,6 +10,7 @@
 #include <string.h>
 #include "netwrk.h"
 #include "general.h"
+#include "src/util/log.h"
 
 // TODO: ensure there is not error in memory cleaning and returning local variable
 sockaddr_t make_local_addr(addr_port_t config){
@@ -20,6 +21,16 @@ sockaddr_t make_local_addr(addr_port_t config){
     local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     return local_addr;
+}
+
+int send_bye(int sock){
+    message_type_e message = BYE;
+    int rc = ssend(sock, &message, sizeof(message));
+    RETURN_ON_FAILURE(rc);
+
+    LOG("Send bye");
+
+    return (EXIT_SUCCESS);
 }
 
 int prepare_reusable_listening_socket(int * rsock, sockaddr_t local_addr){

@@ -14,7 +14,8 @@
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
 
-#define HEALTH_CHECK_DELAY (60 * 1000)  // ms to wait -> 1 min
+#define HEALTH_CHECK_DELAY (15 * 1000)  // ms to wait -> 1 min
+#define ALIVE (1)
 
 int cluster_map_version = 0;
 char * plane_cluster_map;
@@ -151,21 +152,24 @@ void update_cluster_map(){
 
 int send_health_check(int sock){
     message_type_e message = HEALTH_CHECK;
-    int ALIVE = 1;
+    int is_alive = ALIVE;
 
     int rc;
     rc = ssend(sock, &message, sizeof(message));
     if (rc != (EXIT_SUCCESS)){
-        return !ALIVE;
+        is_alive = !ALIVE;
+        return is_alive;
     }
 
     int res;
     rc = srecv(sock, &res, sizeof(res));
     if (rc != (EXIT_SUCCESS)){
-        return !ALIVE;
+        is_alive = !ALIVE;
     }
 
-    return ALIVE;
+    send_bye(sock);
+
+    return is_alive;
 }
 
 int poll_osd(device_t * device){
@@ -174,6 +178,7 @@ int poll_osd(device_t * device){
     device->state = UNKNOWN;
 
     int sock, rc;
+    LOG("poll_osd fun");
     rc = connect_to_peer(&sock, device->location);
     if (rc != (EXIT_SUCCESS)){
         device->state = DOWN;
@@ -181,16 +186,17 @@ int poll_osd(device_t * device){
     }
     else{
         int alive = send_health_check(sock);
-        if (!alive){
-            device->state = DOWN;
-        }
+        device->state = alive ? UP : DOWN;
     }
+
+    printf("Health check to %s %d, device state is %d\n", device->location.addr, device->location.port, device->state);
 
     return old_state != device->state;
 }
 
 int dfs_check_devices(bucket_t * bucket){
     int state_changed = 0;
+    printf("Bucket is: %d %d\n", bucket->class, bucket->type);
     if (bucket->class == DEVICE){
         state_changed |= poll_osd(bucket->device);
     }
@@ -204,10 +210,13 @@ int dfs_check_devices(bucket_t * bucket){
 
 _Noreturn void * osd_poller(void * arg){
     while(1){
+        LOG("Start device liveness check");
         int state_changed = dfs_check_devices(cluster_map->root);
         if (state_changed) {
+            LOG("State changed");
             update_cluster_map();
         }
+        LOG("Sleeping between next osd polling");
         mysleep(HEALTH_CHECK_DELAY);
     }
 }
@@ -231,10 +240,10 @@ int run_monitor(addr_port_t config){
     RETURN_ON_FAILURE(rc);
 
     // Mock map updates by updating it every ..X secs
-    for (int i = 0; i < 100; i++){
-        mysleep(30000);
-        update_cluster_map();
-    }
+//    for (int i = 0; i < 100; i++){
+//        mysleep(30000);
+//        update_cluster_map();
+//    }
 
     pthread_join(client_handler_thread, NULL);
     pthread_join(osd_poller, NULL);

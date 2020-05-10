@@ -102,16 +102,6 @@ int get_cluster_map(int sock){
     return (EXIT_SUCCESS);
 }
 
-int send_bye(int sock){
-    message_type_e message = BYE;
-    int rc = ssend(sock, &message, sizeof(message));
-    RETURN_ON_FAILURE(rc);
-
-    LOG("Send bye");
-
-    return (EXIT_SUCCESS);
-}
-
 int update_map_if_needed(client_config_t config){
     int sock, rc;
     rc = connect_to_peer(&sock, config.monitor);

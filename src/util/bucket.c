@@ -39,7 +39,7 @@ void init_bucket(bucket_t * bucket, bucket_class_e b_class, bucket_type_e b_type
                  int b_size){
     bucket->type = b_type;
     bucket->class = b_class;
-//    bucket->size = b_size;
+    bucket->size = b_size;
 
     switch(b_type) {
         case BUCKET_UNIFORM:

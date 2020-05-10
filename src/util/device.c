@@ -7,6 +7,7 @@
 void init_device(device_t * device, int capacity, int port, char *addr){
     device->capacity = capacity;
     device->location.port = port;
+    device->state = UNKNOWN;
     strcpy(device->location.addr, addr);
 }
 

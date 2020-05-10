@@ -79,7 +79,9 @@ void * handle_client_or_monitor(void * arg){
     while (message_type != BYE){
         rc = srecv(sock, &message_type, sizeof(message_type));
         VOID_RETURN_ON_FAILURE(rc);
-        printf("Received message %d \n", message_type);
+
+        fprintf(stdout, "Received message %d \n", message_type);
+        fflush(NULL);
 
         switch(message_type){
             case HEALTH_CHECK:
@@ -104,6 +106,7 @@ void * handle_client_or_monitor(void * arg){
                 break;
             case BYE:
                 LOG("End of chat, bye");
+                break;
             default:
                 LOG("Unprocessable message type");
                 break;
@@ -119,7 +122,9 @@ void * wait_for_client_and_monitor_connection(void * arg){
     sock = _params->sock;
     pthread_mutex_unlock(&_params->mutex);
 
-    printf("SOCK VALUE IS %d\n", sock);
+    // if stdout is redirected to a file, you need to fflush() it
+    fprintf(stdout, "SOCK VALUE IS %d\n", sock);
+    fflush(NULL);
 
     while (1){
         int new_sock;
@@ -131,10 +136,7 @@ void * wait_for_client_and_monitor_connection(void * arg){
 
         pthread_t thread;
         rc = pthread_create(&thread, NULL, handle_client_or_monitor, &inner_params);
-        if (rc != 0){
-            perror("Error creating thread");
-            return ((void *)EXIT_FAILURE);
-        }
+        VOID_RETURN_ON_FAILURE(rc);
 
         pthread_mutex_lock(&inner_params.mutex);
 
@@ -200,7 +202,6 @@ int run_osd(addr_port_t config){
 int main(int argc, char ** argv){
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
-
 
     return run_osd(config);
 }

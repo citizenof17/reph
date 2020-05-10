@@ -38,6 +38,8 @@ typedef struct socket_transfer_t {
     pthread_mutex_t mutex;
 } socket_transfer_t;
 
+int send_bye(int sock);
+
 sockaddr_t make_local_addr(addr_port_t config);
 int prepare_reusable_listening_socket(int * rsock, sockaddr_t local_addr);
 // rsock - where newly created socket will be placed (return value)
