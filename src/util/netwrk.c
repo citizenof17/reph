@@ -127,7 +127,7 @@ int srecv(int sock, void * buffer, size_t size) {
         perror("Error calling srecv(..)");
         return (EXIT_FAILURE);
     }
-    printf("Received %d bytes\n", rc);
+//    printf("Received %d bytes\n", rc);
     return (EXIT_SUCCESS);
 }
 

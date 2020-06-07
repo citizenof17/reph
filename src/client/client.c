@@ -102,9 +102,10 @@ int get_cluster_map(int sock){
     RETURN_ON_FAILURE(rc);
     LOG("Received new plane cluster map representation");
 
-    printf("Old cluster map %s\n", plane_cluster_map);
+    LOG("Cluster map is updated");
+//    printf("Old cluster map %s\n", plane_cluster_map);
     strcpy(plane_cluster_map, buf);
-    printf("New cluster map %s\n", plane_cluster_map);
+//    printf("New cluster map %s\n", plane_cluster_map);
 
     return (EXIT_SUCCESS);
 }
@@ -257,7 +258,7 @@ int perform_get(){
 
     object_key_t key = get_posted_key();
 
-    printf("Already posted key is: %s\n", key.val);
+    printf("GET request for the following key: %s\n", key.val);
 
     pthread_t thread;
     int rc;
@@ -270,8 +271,12 @@ int perform_get(){
     }
 
     pthread_join(thread, NULL);
-
-    printf("Received obj for GET: %s %s\n", obj.key.val, obj.value.val);
+    if (obj.value.val[0] != '\0') {
+        printf("Received obj for GET: %s %s\n", obj.key.val, obj.value.val);
+    }
+    else{
+        LOG("Key is not found");
+    }
 
     return (EXIT_SUCCESS);
 }

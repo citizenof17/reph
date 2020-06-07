@@ -35,7 +35,7 @@ map_entry_t gen_dummy_map(){
 }
 
 char * parse_json_to_string(FILE * fin){
-    LOG("NOT IMPLEMENTED");
+//    LOG("NOT IMPLEMENTED");
     char * plane_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
     return plane_map;
 }
@@ -63,7 +63,7 @@ void build_map_bucket(bucket_t * bucket, map_entry_t map_entry){
 map_entry_t make_map_entry_from_string(char *map_string){
 // This function should parse json string to build map_entry_t - which is raw
 // representation of the cluster
-    LOG("NOT IMPLEMENTED");
+//    LOG("NOT IMPLEMENTED");
     return gen_dummy_map();
 }
 

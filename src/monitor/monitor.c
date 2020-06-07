@@ -145,8 +145,8 @@ void update_cluster_map(){
     LOG("Updating cluster map");
     printf("Updated cluster map version from %d to %d\n",
            cluster_map_version, cluster_map_version + 1);
-    gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
-    printf("New cluster map: %s\n", plane_cluster_map);
+//    gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
+//    printf("New cluster map: %s\n", plane_cluster_map);
     cluster_map_version++;
 }
 
@@ -178,7 +178,7 @@ int poll_osd(device_t * device){
     device->state = UNKNOWN;
 
     int sock, rc;
-    LOG("poll_osd fun");
+//    LOG("poll_osd fun");
     rc = connect_to_peer(&sock, device->location);
     if (rc != (EXIT_SUCCESS)){
         device->state = DOWN;
@@ -217,7 +217,7 @@ _Noreturn void * osd_poller(void * arg){
             LOG("State changed");
             update_cluster_map();
         }
-        LOG("Sleeping between next osd polling");
+        LOG("Sleeping until next osd polling");
         mysleep(HEALTH_CHECK_DELAY);
     }
 }
