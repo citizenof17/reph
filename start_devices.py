@@ -1,7 +1,10 @@
 import subprocess
 import os
+import sys
+
 
 output_folder = 'captured_output'
+total_osd_count = 5
 
 
 def create_output_folder(folder_name=output_folder):
@@ -9,9 +12,16 @@ def create_output_folder(folder_name=output_folder):
         os.makedirs(folder_name)
 
 
+def get_osd_count_from_cmdline():
+    if len(sys.argv) > 1:
+        return int(sys.argv[1])
+    return None
+
+
 def main():
     create_output_folder()
-    osd_ports = ['4242', '4243', '4244', '4245', '4246']
+    osd_count = get_osd_count_from_cmdline() or total_osd_count
+    osd_ports = ['4242', '4243', '4244', '4245', '4246'][:osd_count]
     filename_pattern = f'{output_folder}/{{}}.txt'
     files = [open(filename_pattern.format(osd_port), 'w') for osd_port in osd_ports]
     for i, osd_port in enumerate(osd_ports):

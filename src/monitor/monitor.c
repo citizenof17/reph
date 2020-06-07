@@ -189,7 +189,8 @@ int poll_osd(device_t * device){
         device->state = alive ? UP : DOWN;
     }
 
-    printf("Health check to %s %d, device state is %d\n", device->location.addr, device->location.port, device->state);
+    printf("Health check to %s %d, device state is %d\n", device->location.addr,
+           device->location.port, device->state);
 
     return old_state != device->state;
 }
@@ -238,12 +239,6 @@ int run_monitor(addr_port_t config){
     pthread_t osd_poller;
     rc = start_osd_poller(&osd_poller);
     RETURN_ON_FAILURE(rc);
-
-    // Mock map updates by updating it every ..X secs
-//    for (int i = 0; i < 100; i++){
-//        mysleep(30000);
-//        update_cluster_map();
-//    }
 
     pthread_join(client_handler_thread, NULL);
     pthread_join(osd_poller, NULL);

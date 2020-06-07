@@ -23,14 +23,16 @@ typedef struct addr_port_t {
 } addr_port_t;
 
 typedef enum message_type_e {
-    BYE,
-    HEALTH_CHECK,
-    GET_MAP_VERSION,
-    GET_MAP,
-    GET_OBJECT,
-    POST_OBJECT,
-    UPDATE_OBJECT,
-    DELETE_OBJECT,
+    BYE             = 0,
+    HEALTH_CHECK    = 1,
+    GET_MAP_VERSION = 2,
+    GET_MAP         = 3,
+    GET_OBJECT      = 4,
+    POST_OBJECT     = 5,
+    UPDATE_OBJECT   = 6,
+    DELETE_OBJECT   = 7,
+    OP_SUCCESS      = 8,
+    OP_FAILURE      = 9,
 } message_type_e;
 
 typedef struct socket_transfer_t {

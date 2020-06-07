@@ -7,8 +7,13 @@
 #include "src/util/cluster_map.h"
 #include "src/util/netwrk.h"
 #include "src/util/general.h"
+#include <src/util/object.h>
+#include <signal.h>
 
 #define BETWEEN_PEER_PORT (10000)
+
+int storage_size = 0;
+object_t storage[100];
 
 addr_port_t make_default_config(){
     addr_port_t config = {
@@ -48,23 +53,63 @@ int handle_health_check(int sock){
     return (EXIT_SUCCESS);
 }
 
+void find_and_fill_object(object_t * obj){
+    for (int i = 0; i < storage_size; i++){
+        if (strcmp(storage[i].key.val, obj->key.val) == 0){
+            strcpy(obj->value.val, storage[i].value.val);
+            break;
+        }
+    }
+}
+
 int handle_get_object(int sock){
-    LOG("NOT IMPLEMENTED");
+    LOG("Handling GET");
+    int rc;
+    object_t obj;
+
+    rc = srecv(sock, &obj, sizeof(obj));
+    RETURN_ON_FAILURE(rc);
+    printf("Received object: %s %s \n", obj.key.val, obj.value.val);
+
+    find_and_fill_object(&obj);
+
+    rc = ssend(sock, &obj, sizeof(obj));
+    RETURN_ON_FAILURE(rc);
+
     return (EXIT_SUCCESS);
 }
 
+int save_object(object_t * obj){
+    // do some
+    push(storage, &storage_size, obj);
+    // do some
+}
+
 int handle_post_object(int sock){
-    LOG("NOT IMPLEMENTED");
+    LOG("Handling POST");
+    int rc;
+    object_t obj;
+
+    rc = srecv(sock, &obj, sizeof(obj));
+    RETURN_ON_FAILURE(rc);
+    printf("Received object: %s %s \n", obj.key.val, obj.value.val);
+
+    save_object(&obj);
+
+    message_type_e response = OP_SUCCESS;
+    rc = ssend(sock, &response, sizeof(response));
+    RETURN_ON_FAILURE(rc);
+
     return (EXIT_SUCCESS);
 }
 
 int handle_update_object(int sock){
-    LOG("NOT IMPLEMENTED");
+    LOG("handle_update_object NOT IMPLEMENTED");
     return (EXIT_SUCCESS);
 }
 
 int handle_delete_object(int sock){
-    LOG("NOT IMPLEMENTED");
+    LOG("handle_delete_object NOT IMPLEMENTED");
     return (EXIT_SUCCESS);
 }
 
@@ -168,12 +213,12 @@ int start_client_and_monitor_handler(addr_port_t config, pthread_t * thread){
 }
 
 int start_peer_poller(addr_port_t config, pthread_t * thread){
-    LOG("NOT IMPLEMENTED");
+    LOG("start_peer_poller NOT IMPLEMENTED");
     return (EXIT_SUCCESS);
 }
 
 int start_peer_handler(addr_port_t config, pthread_t * thread){
-    LOG("NOT IMPLEMENTED");
+    LOG("start_peer_handler NOT IMPLEMENTED");
     return (EXIT_SUCCESS);
 }
 
@@ -199,7 +244,16 @@ int run_osd(addr_port_t config){
     return wait_for_all(threads, total_number_of_threads);
 }
 
+void intHandler(int smt){
+    print_storage(storage, storage_size);
+    printf("Error code %d\n", smt);
+    exit(1);
+}
+
+
 int main(int argc, char ** argv){
+    signal(SIGINT, intHandler);
+
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
