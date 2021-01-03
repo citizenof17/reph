@@ -16,6 +16,8 @@
 
 #define HEALTH_CHECK_DELAY (15 * 1000)  // ms to wait -> 1 min
 #define ALIVE (1)
+#define NOT_ALIVE (0)
+
 
 int cluster_map_version = 0;
 char * plane_cluster_map;
@@ -157,18 +159,17 @@ int send_health_check(int sock){
     int rc;
     rc = ssend(sock, &message, sizeof(message));
     if (rc != (EXIT_SUCCESS)){
-        is_alive = !ALIVE;
+        is_alive = NOT_ALIVE;
         return is_alive;
     }
 
     int res;
     rc = srecv(sock, &res, sizeof(res));
     if (rc != (EXIT_SUCCESS)){
-        is_alive = !ALIVE;
+        is_alive = NOT_ALIVE;
     }
 
     send_bye(sock);
-
     return is_alive;
 }
 
@@ -180,11 +181,11 @@ int poll_osd(device_t * device){
     int sock, rc;
 //    LOG("poll_osd fun");
     rc = connect_to_peer(&sock, device->location);
-    if (rc != (EXIT_SUCCESS)){
+    if (rc != (EXIT_SUCCESS)) {
         device->state = DOWN;
         perror("Error connecting to peer");
     }
-    else{
+    else {
         int alive = send_health_check(sock);
         device->state = alive ? UP : DOWN;
     }

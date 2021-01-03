@@ -28,6 +28,18 @@ void print_storage(object_t * storage, int storage_size){
     printf("------------------\n");
 }
 
+void print_storage2(storage_t * storage){
+    printf("------------------\n");
+    printf("Storage size: %d\n", storage->size);
+    printf("Storage entries:\n");
+    for (int i = 0; i < storage->size; i++){
+        printf("%s, %s, version: %d, primary: %d\n",
+               storage->objects[i].key.val, storage->objects[i].value.val,
+               storage->objects[i].version, storage->objects[i].primary);
+    }
+    printf("------------------\n");
+}
+
 void push(object_t * storage, int * storage_size, object_t * obj){
     object_t new_obj = {
             .key = obj->key,
@@ -35,4 +47,33 @@ void push(object_t * storage, int * storage_size, object_t * obj){
     };
     storage[*storage_size] = new_obj;
     *storage_size = *(storage_size) + 1;
+}
+
+void push2(storage_t * storage, object_t * obj, int pos){
+    object_t new_obj = {
+            .key = obj->key,
+            .value = obj->value,
+            .version = obj->version,
+            .primary = obj->primary,
+    };
+    if (pos != -1){
+        storage->objects[pos] = new_obj;
+    }
+    else{
+        storage->objects[storage->size] = new_obj;
+        storage->size = storage->size + 1;
+    }
+}
+
+
+void remove2(storage_t * storage, int pos){
+    if (pos >= storage->size){
+        return;
+    }
+
+    storage->size = storage->size - 1;
+    int i;
+    for (i = pos; i < storage->size; i++){
+        storage->objects[i] = storage->objects[i + 1];
+    }
 }

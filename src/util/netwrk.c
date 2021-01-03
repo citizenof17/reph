@@ -12,7 +12,7 @@
 #include "general.h"
 #include "src/util/log.h"
 
-// TODO: ensure there is not error in memory cleaning and returning local variable
+// TODO: ensure there is no error in memory cleaning and returning local variable
 sockaddr_t make_local_addr(addr_port_t config){
     sockaddr_t local_addr;
     memset(&local_addr, 0, sizeof(sockaddr_t));

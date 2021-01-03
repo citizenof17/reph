@@ -7,13 +7,14 @@
 #include "src/util/cluster_map.h"
 #include "src/util/netwrk.h"
 #include "src/util/general.h"
-#include <src/util/object.h>
+#include "src/util/object.h"
 #include <signal.h>
 
 #define BETWEEN_PEER_PORT (10000)
 
-int storage_size = 0;
-object_t storage[100];
+int cluster_map_version = -1;
+
+storage_t storage;
 
 addr_port_t make_default_config(){
     addr_port_t config = {
@@ -53,13 +54,16 @@ int handle_health_check(int sock){
     return (EXIT_SUCCESS);
 }
 
-void find_and_fill_object(object_t * obj){
-    for (int i = 0; i < storage_size; i++){
-        if (strcmp(storage[i].key.val, obj->key.val) == 0){
-            strcpy(obj->value.val, storage[i].value.val);
+int find_and_fill_object(object_t * obj){
+    int i;
+    for (i = 0; i < storage.size; i++){
+        if (strcmp(storage.objects[i].key.val, obj->key.val) == 0){
+            strcpy(obj->value.val, storage.objects[i].value.val);
+            obj->version = storage.objects[i].version;
             break;
         }
     }
+    return i;
 }
 
 int handle_get_object(int sock){
@@ -80,9 +84,21 @@ int handle_get_object(int sock){
 }
 
 int save_object(object_t * obj){
-    // do some
-    push(storage, &storage_size, obj);
-    // do some
+    // very costly lookup
+    object_t old_obj = empty_object;
+    int old_pos = find_and_fill_object(&old_obj);
+
+    if (old_obj.version >= obj->version){
+        return NEWER_VERSION_STORED;
+    }
+    else if (old_obj.version != -1){  // It's already in a storage but with an old value
+        push2(&storage, obj, old_pos);
+    }
+    else{
+        push2(&storage, obj, -1);
+    }
+
+    return OP_SUCCESS;
 }
 
 int handle_post_object(int sock){
@@ -92,11 +108,10 @@ int handle_post_object(int sock){
 
     rc = srecv(sock, &obj, sizeof(obj));
     RETURN_ON_FAILURE(rc);
-    printf("Received object: %s %s \n", obj.key.val, obj.value.val);
+    printf("Received object: %s %s %d %d\n", obj.key.val, obj.value.val, obj.version,
+           obj.primary);
 
-    save_object(&obj);
-
-    message_type_e response = OP_SUCCESS;
+    message_type_e response = save_object(&obj);
     rc = ssend(sock, &response, sizeof(response));
     RETURN_ON_FAILURE(rc);
 
@@ -133,12 +148,12 @@ void * handle_client_or_monitor(void * arg){
                 rc = handle_health_check(sock);
                 VOID_RETURN_ON_FAILURE(rc);
                 break;
-            case GET_OBJECT:
-                rc = handle_get_object(sock);
-                VOID_RETURN_ON_FAILURE(rc);
-                break;
             case POST_OBJECT:
                 rc = handle_post_object(sock);
+                VOID_RETURN_ON_FAILURE(rc);
+                break;
+            case GET_OBJECT:
+                rc = handle_get_object(sock);
                 VOID_RETURN_ON_FAILURE(rc);
                 break;
             case UPDATE_OBJECT:
@@ -245,14 +260,16 @@ int run_osd(addr_port_t config){
 }
 
 void intHandler(int smt){
-    print_storage(storage, storage_size);
+    print_storage2(&storage);
     printf("Error code %d\n", smt);
     exit(1);
 }
 
 
 int main(int argc, char ** argv){
-    signal(SIGINT, intHandler);
+    signal(SIGINT | SIGTERM, intHandler);
+
+    storage.size = 0;
 
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);

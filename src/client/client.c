@@ -227,11 +227,12 @@ int perform_post(){
     gen_random_string(key.val, 5);
     gen_random_string(value.val, 15);
 
-
     printf("Generated key and value: %s %s\n", key.val, value.val);
 
     obj.key = key;
     obj.value = value;
+    obj.version = cluster_map_version;
+    obj.primary = 1;
 
     pthread_t thread;
     int rc;
@@ -274,7 +275,7 @@ int perform_get(){
     if (obj.value.val[0] != '\0') {
         printf("Received obj for GET: %s %s\n", obj.key.val, obj.value.val);
     }
-    else{
+    else {
         LOG("Key is not found");
     }
 
@@ -287,7 +288,7 @@ int perform_some_action(){
 
     int action_number = rand() % POSSIBLE_OPERATIONS_COUNT;
 
-    action_number = action_number % 2; // only post and get are supported
+    action_number = action_number % 2; // only post and get are supported atm
 
     message_type_e action = possible_operations[action_number];
 
