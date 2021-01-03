@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <time.h>
+#include <malloc.h>
 
 void LOG(char* buf);
 

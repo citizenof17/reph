@@ -22,6 +22,11 @@ typedef struct addr_port_t {
     int port;
 } addr_port_t;
 
+typedef struct net_config_t {
+    addr_port_t self;
+    addr_port_t monitor;
+} net_config_t;
+
 typedef enum message_type_e {
     BYE             = 0,
     HEALTH_CHECK    = 1,

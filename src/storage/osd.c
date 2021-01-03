@@ -1,4 +1,4 @@
-//
+
 // Created by pavel on 08.05.2020.
 //
 
@@ -9,19 +9,29 @@
 #include "src/util/general.h"
 #include "src/util/object.h"
 #include <signal.h>
+#include <src/crush.h>
 
 #define BETWEEN_PEER_PORT (10000)
 
 int cluster_map_version = -1;
+int replicas_factor = 2;
+cluster_map_t * cluster_map;
+char * plane_cluster_map;
+
 
 storage_t storage;
 
-addr_port_t make_default_config(){
-    addr_port_t config = {
-            .addr = DEFAULT_ADDR,
-            .port = DEFAULT_OSD_PORT
+net_config_t make_default_config(){
+    net_config_t config = {
+            .self = {
+                    .addr = DEFAULT_ADDR,
+                    .port = DEFAULT_OSD_PORT,
+            },
+            .monitor = {
+                    .addr = DEFAULT_ADDR,
+                    .port = DEFAULT_MONITOR_PORT,
+            }
     };
-
     return config;
 }
 
@@ -54,12 +64,12 @@ int handle_health_check(int sock){
     return (EXIT_SUCCESS);
 }
 
-int find_and_fill_object(object_t * obj){
+int find_and_fill_object(storage_t * _storage, object_t * obj){
     int i;
-    for (i = 0; i < storage.size; i++){
-        if (strcmp(storage.objects[i].key.val, obj->key.val) == 0){
-            strcpy(obj->value.val, storage.objects[i].value.val);
-            obj->version = storage.objects[i].version;
+    for (i = 0; i < _storage->size; i++){
+        if (strcmp(_storage->objects[i].key.val, obj->key.val) == 0){
+            strcpy(obj->value.val, _storage->objects[i].value.val);
+            obj->version = _storage->objects[i].version;
             break;
         }
     }
@@ -75,7 +85,7 @@ int handle_get_object(int sock){
     RETURN_ON_FAILURE(rc);
     printf("Received object: %s %s \n", obj.key.val, obj.value.val);
 
-    find_and_fill_object(&obj);
+    find_and_fill_object(&storage, &obj);
 
     rc = ssend(sock, &obj, sizeof(obj));
     RETURN_ON_FAILURE(rc);
@@ -83,19 +93,31 @@ int handle_get_object(int sock){
     return (EXIT_SUCCESS);
 }
 
+
+void replicate(object_t * obj){
+    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+
+    crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor);
+
+    free(select_from->buckets);
+    free(select_from);
+}
+
+
 int save_object(object_t * obj){
-    // very costly lookup
+    // very costly lookup, can be optimised with hash table?
     object_t old_obj = empty_object;
-    int old_pos = find_and_fill_object(&old_obj);
+    int old_pos = find_and_fill_object(&storage, &old_obj);
 
     if (old_obj.version >= obj->version){
         return NEWER_VERSION_STORED;
     }
-    else if (old_obj.version != -1){  // It's already in a storage but with an old value
-        push2(&storage, obj, old_pos);
-    }
-    else{
-        push2(&storage, obj, -1);
+    else {
+        push2(&storage, obj, old_obj.version != -1 ? old_pos : -1);
+
+        if (obj->primary){
+            replicate(obj);
+        }
     }
 
     return OP_SUCCESS;
@@ -237,6 +259,23 @@ int start_peer_handler(addr_port_t config, pthread_t * thread){
     return (EXIT_SUCCESS);
 }
 
+int start_recovery_handler(net_config_t config, pthread_t * thread){
+
+    // get new map from monitor
+
+    // objects from secondary_storage:
+    // move from secondary_storage to primary_storage if we are now primary on an object
+    // send object from secondary_storage to primary if it's (osd) state is changed
+    // remove object from secondary_storage if we are not primary/secondary OSD anymore
+
+    // objects from primary_storage:
+    // find new primary/secondaries for the object. If we are not primary anymore,
+    // send object to a new primary. Remove it from our store if we are not in the list of
+    // secondaries or move to secondary_storage.
+
+    return (EXIT_SUCCESS);
+}
+
 int wait_for_all(pthread_t * threads, int count){
     for (int i = 0; i < count; i++){
         pthread_join(threads[i], NULL);
@@ -244,16 +283,17 @@ int wait_for_all(pthread_t * threads, int count){
     return (EXIT_SUCCESS);
 }
 
-int run_osd(addr_port_t config){
-
-    const int total_number_of_threads = 3;
+int run_osd(net_config_t config){
+    const int total_number_of_threads = 4;
     pthread_t threads[total_number_of_threads];
     int rc;
-    rc = start_client_and_monitor_handler(config, &threads[0]);
+    rc = start_client_and_monitor_handler(config.self, &threads[0]);
     RETURN_ON_FAILURE(rc);
-    rc = start_peer_poller(config, &threads[1]);
+    rc = start_peer_poller(config.self, &threads[1]);
     RETURN_ON_FAILURE(rc);
-    rc = start_peer_handler(config, &threads[2]);
+    rc = start_peer_handler(config.self, &threads[2]);
+    RETURN_ON_FAILURE(rc);
+    rc = start_recovery_handler(config, &threads[3]);
     RETURN_ON_FAILURE(rc);
 
     return wait_for_all(threads, total_number_of_threads);
@@ -271,8 +311,8 @@ int main(int argc, char ** argv){
 
     storage.size = 0;
 
-    addr_port_t config = make_default_config();
-    init_config_from_input(&config, argc, argv);
+    net_config_t config = make_default_config();
+    init_config_from_input(&(config.self), argc, argv);
 
     return run_osd(config);
 }

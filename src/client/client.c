@@ -26,12 +26,7 @@ cluster_map_t * cluster_map;
 int storage_size = 0;
 object_t storage[100];
 
-typedef struct client_config_t {
-    addr_port_t self;
-    addr_port_t monitor;
-} client_config_t;
-
-int init_config_from_input(client_config_t * config, int argc, char ** argv) {
+int init_config_from_input(net_config_t * config, int argc, char ** argv) {
     int c;
 
     while ((c = getopt(argc, argv, "a:p:s:t:")) != -1) {
@@ -58,8 +53,8 @@ int init_config_from_input(client_config_t * config, int argc, char ** argv) {
     return (EXIT_SUCCESS);
 }
 
-client_config_t make_default_config(){
-    client_config_t config = {
+net_config_t make_default_config(){
+    net_config_t config = {
             .self = {
                     .addr = DEFAULT_ADDR,
                     .port = DEFAULT_CLIENT_PORT,
@@ -70,72 +65,6 @@ client_config_t make_default_config(){
             }
     };
     return config;
-}
-
-int get_map_version(int sock, int * new_map_version){
-    message_type_e message = GET_MAP_VERSION;
-    int rc;
-
-    rc = ssend(sock, &message, sizeof(message));
-    RETURN_ON_FAILURE(rc);
-    LOG("Send request for map version");
-
-    rc = srecv(sock, new_map_version, sizeof(*new_map_version));
-    RETURN_ON_FAILURE(rc);
-    LOG("Received new map version");
-
-    return (EXIT_SUCCESS);
-}
-
-int get_cluster_map(int sock){
-    int rc;
-    message_type_e message = GET_MAP;
-
-    rc = ssend(sock, &message, sizeof(message));
-    RETURN_ON_FAILURE(rc);
-    LOG("Send request for a new map version");
-
-    // TODO: Probably you will read more than expected from that socket (because
-    //  DEFAULT_MAP_SIZE is more than actual map size is), be careful here
-    char buf[DEFAULT_MAP_SIZE];
-    rc = srecv(sock, buf, DEFAULT_MAP_SIZE);
-    RETURN_ON_FAILURE(rc);
-    LOG("Received new plane cluster map representation");
-
-    LOG("Cluster map is updated");
-//    printf("Old cluster map %s\n", plane_cluster_map);
-    strcpy(plane_cluster_map, buf);
-//    printf("New cluster map %s\n", plane_cluster_map);
-
-    return (EXIT_SUCCESS);
-}
-
-int update_map_if_needed(client_config_t config){
-    int sock, rc;
-    rc = connect_to_peer(&sock, config.monitor);
-    RETURN_ON_FAILURE(rc);
-
-    LOG("Client connected to monitor");
-
-    int new_map_version;
-    rc = get_map_version(sock, &new_map_version);
-    RETURN_ON_FAILURE(rc);
-
-    printf("New cluster map version %d\n", new_map_version);
-
-    if (new_map_version > cluster_map_version){
-        LOG("Cluster map version is updated, need to refresh its content");
-        cluster_map_version = new_map_version;
-        rc = get_cluster_map(sock);
-        RETURN_ON_FAILURE(rc);
-
-        cluster_map = build_map_from_string(plane_cluster_map);
-    }
-
-    send_bye(sock);
-    close(sock);
-
-    return (EXIT_SUCCESS);
 }
 
 device_t mocked_crush(){
@@ -231,7 +160,7 @@ int perform_post(){
 
     obj.key = key;
     obj.value = value;
-    obj.version = cluster_map_version;
+    obj.version = cluster_map->version;
     obj.primary = 1;
 
     pthread_t thread;
@@ -305,10 +234,10 @@ int perform_some_action(){
     return (EXIT_SUCCESS);
 }
 
-int run_client(client_config_t config){
+int run_client(net_config_t config){
     while(1){
         int rc;
-        rc = update_map_if_needed(config);
+        rc = update_map_if_needed(config, &cluster_map);
         RETURN_ON_FAILURE(rc);
 
         rc = perform_some_action();
@@ -321,11 +250,11 @@ int run_client(client_config_t config){
 int main(int argc, char ** argv){
     init_rand();
 
-    client_config_t config = make_default_config();
+    net_config_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
     plane_cluster_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
-    cluster_map = (cluster_map_t *)malloc(sizeof(cluster_map_t));
+    cluster_map = init_empty_cluster_map();
 
     return run_client(config);
 }

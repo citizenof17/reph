@@ -23,7 +23,7 @@ void init_uniform_bucket(bucket_t * bucket, int size){
     LOG("Initialize uniform bucket");
 
     uniform_bucket_t * impl = malloc(sizeof(uniform_bucket_t));
-    bucket->_impl = impl;
+    bucket->_impl = (void *)impl;
     impl->size = size;
 
     impl->buckets = malloc(sizeof(bucket_t **) * size);
@@ -54,9 +54,5 @@ void init_bucket(bucket_t * bucket, bucket_class_e b_class, bucket_type_e b_type
         default:
             LOG("Other bucket types are not supported");
             init_uniform_bucket(bucket, 1);
-    }
-
-    if (b_class == DEVICE){
-        bucket->device = (device_t *)malloc(sizeof(device_t));
     }
 }
