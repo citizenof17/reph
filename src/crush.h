@@ -13,7 +13,9 @@ typedef struct crush_result_t {
     int size;
 } crush_result_t;
 
-crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n);
+crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, int x);
 crush_result_t * init_crush_input(int num, ...);
+
+void clear_crush_result(crush_result_t ** result);
 
 #endif //REPH_CRUSH_H

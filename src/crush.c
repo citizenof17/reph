@@ -4,6 +4,9 @@
 
 #include "crush.h"
 
+#define MAX_REPLICA_FAILURES 10
+
+
 crush_result_t * init_crush_input(int num, ...){
     crush_result_t * input = (crush_result_t *)malloc(sizeof(crush_result_t));
     input->buckets = (bucket_t **)malloc(sizeof(bucket_t *) * num);
@@ -19,6 +22,11 @@ crush_result_t * init_crush_input(int num, ...){
     va_end(valist);
 
     return input;
+}
+
+void clear_crush_result(crush_result_t ** result){
+    free((*result)->buckets);
+    free(*result);
 }
 
 char failed(bucket_t * output_bucket){
@@ -46,11 +54,10 @@ char in_(bucket_t * output_bucket, crush_result_t * output, int last_pos){
 // input - where to select new items
 // t - type of elements to be selected
 // n - number of elements to select
-crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n){
+// x - hash of the object
+crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, int x){
     crush_result_t * output = (crush_result_t *)malloc(sizeof(crush_result_t));
     output->buckets = (bucket_t **)malloc(sizeof(bucket_t *) * n);
-
-    bucket_t * selected_buckets;
 
     int i;
     int last_pos = 0;
@@ -70,13 +77,13 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n){
 
                 do {
                     int rd = 0;
-                    if ("first n") {  // TODO: Check what is this?
-                        rd = r + failures;
-                    } else {
-                        rd = r + replica_failures * n;
-                    }
+//                    if ("first n") {  // TODO: Check what is this?
+                    rd = r + failures;
+//                    } else {
+//                        rd = r + replica_failures * n;
+//                    }
 
-                    output_bucket = bucket->c(rd, x);
+                    output_bucket = bucket->c(rd, x, bucket);
 
                     char in_output = in_(output_bucket, output, last_pos);
                     if (output_bucket->class != t){
@@ -94,8 +101,8 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n){
                             retry_descent = 1;
                         }
                     }
-                } while(!retry_bucket);
-            } while(!retry_descent);
+                } while(retry_bucket);
+            } while(retry_descent && replica_failures < MAX_REPLICA_FAILURES);
 
             if (output_bucket != NULL){
                 output->buckets[last_pos] = output_bucket;

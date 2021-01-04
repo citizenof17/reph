@@ -4,7 +4,7 @@ import sys
 
 
 output_folder = 'captured_output'
-total_osd_count = 5
+total_osd_count = 2
 
 
 def create_output_folder(folder_name=output_folder):

@@ -12,9 +12,9 @@
 #define ADDR_SIZE (16)
 
 typedef enum state_e {
-    UNKNOWN,
-    UP,
-    DOWN
+    UNKNOWN  = 0,
+    UP       = 1,
+    DOWN     = 2
 } state_e;
 
 

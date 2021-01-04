@@ -8,14 +8,17 @@
 
 int RANDOM_PRIME = 67631;
 
-int uniform_bucket_crush(int r, int x, bucket_t * bucket){
+bucket_t * uniform_bucket_crush(int r, int x, bucket_t * bucket){
     int bucket_size = ((uniform_bucket_t *)(bucket->_impl))->size;
     if (bucket_size == 0){
-        // This is leaf bucket and it stores a device
-        return 0;
+        // This is a leaf bucket and it stores a device
+        return bucket;
+//        return 0;
     }
-    else{
-        return (hash(x) + r * RANDOM_PRIME) % bucket_size;
+    else {
+        bucket_size = 1;
+        int idx = (hash(x) + r * RANDOM_PRIME) % bucket_size;
+        return bucket->inner_buckets[idx];
     }
 }
 

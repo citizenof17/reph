@@ -7,11 +7,11 @@
 #include <getopt.h>
 #include <string.h>
 #include <stdlib.h>
-#include <src/util/general.h>
-#include <src/util/cluster_map.h>
 #include <pthread.h>
-#include <src/util/object.h>
-
+#include "src/util/general.h"
+#include "src/util/cluster_map.h"
+#include "src/util/object.h"
+#include "src/crush.h"
 #include "src/util/log.h"
 #include "src/util/netwrk.h"
 #include "src/util/mysleep.h"
@@ -67,46 +67,40 @@ net_config_t make_default_config(){
     return config;
 }
 
-device_t mocked_crush(){
-    return *cluster_map->root->inner_buckets[0]->device;
-}
+addr_port_t get_target_device_location(object_t * obj){
+    crush_result_t * input = init_crush_input(1, cluster_map->root);
+    crush_result_t * result = crush_select(input, DEVICE, 1, obj_hash(obj));
 
-device_t crush(object_key_t obj_key){
-    return mocked_crush();
-}
-
-addr_port_t get_target_device_location(object_key_t obj_key){
-    // TODO: Use CRUSH to calculate real device location.
-    device_t target_device = crush(obj_key);
-    return target_device.location;
+    return result->buckets[0]->device->location;
 }
 
 
-void* post_obj(void* _obj) {
+void* post_obj(void * _obj) {
     LOG("POST");
     object_t *temp_obj = _obj;
     object_t obj = *temp_obj;
     printf("Posting key and value: %s %s\n", obj.key.val, obj.value.val);
 
-    addr_port_t target_location = get_target_device_location(obj.key);
+    addr_port_t target_location = get_target_device_location(&obj);
 
+    printf("Target location: %s %d\n", target_location.addr, target_location.port);
     int sock, rc;
     rc = connect_to_peer(&sock, target_location);
-    VOID_RETURN_ON_FAILURE(rc);
+    VOID_RETURN_ON_FAILURE(rc)
 
     LOG("Client connected to server");
 
     message_type_e message = POST_OBJECT;
     rc = ssend(sock, &message, sizeof(message));
-    VOID_RETURN_ON_FAILURE(rc);
+    VOID_RETURN_ON_FAILURE(rc)
     LOG("Send request for POST");
 
     rc = ssend(sock, &obj, sizeof(obj));
-    VOID_RETURN_ON_FAILURE(rc);
+    VOID_RETURN_ON_FAILURE(rc)
     LOG("Sent POST");
 
     rc = srecv(sock, &message, sizeof(message));
-    VOID_RETURN_ON_FAILURE(rc);
+    VOID_RETURN_ON_FAILURE(rc)
     printf("Response code for POST: %d\n", message);
 
     send_bye(sock);
@@ -119,7 +113,7 @@ void* get_obj(void * _obj) {
     LOG("GET");
     object_t * obj = _obj;
 
-    addr_port_t target_location = get_target_device_location(obj->key);
+    addr_port_t target_location = get_target_device_location(obj);
 
     int sock, rc;
     rc = connect_to_peer(&sock, target_location);
@@ -171,8 +165,12 @@ int perform_post(){
         return (EXIT_FAILURE);
     }
 
-    pthread_join(thread, NULL);
-    push(storage, &storage_size, &obj);
+    void * thread_output;
+    pthread_join(thread, &thread_output);
+    if ((int *) thread_output == (EXIT_SUCCESS)) {
+        LOG("Post was successful, adding it to local storage");
+        push(storage, &storage_size, &obj);
+    }
     return (EXIT_SUCCESS);
 }
 
@@ -234,7 +232,7 @@ int perform_some_action(){
     return (EXIT_SUCCESS);
 }
 
-int run_client(net_config_t config){
+int run(net_config_t config){
     while(1){
         int rc;
         rc = update_map_if_needed(config, &cluster_map);
@@ -256,7 +254,7 @@ int main(int argc, char ** argv){
     plane_cluster_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
     cluster_map = init_empty_cluster_map();
 
-    return run_client(config);
+    return run(config);
 }
 
 

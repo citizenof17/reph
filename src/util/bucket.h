@@ -31,9 +31,10 @@ typedef struct bucket_t {
     struct bucket_t ** inner_buckets;
 
     void * _impl;
-    int (*c) (int r, int x, struct bucket_t *); // function used to calculate CRUSH
-                                                // from input value of x and a
-                                                // replica number r
+    struct bucket_t * (*c) (int r, int x, struct bucket_t *); // function used to
+                                                              // calculate CRUSH from
+                                                              // input value of x and a
+                                                              // replica number r
 } bucket_t;
 
 typedef struct uniform_bucket_t {

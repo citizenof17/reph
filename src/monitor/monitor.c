@@ -7,9 +7,9 @@
 #include <getopt.h>
 #include <string.h>
 #include <pthread.h>
-#include <src/util/general.h>
-#include <src/util/cluster_map.h>
 
+#include "src/util/general.h"
+#include "src/util/cluster_map.h"
 #include "src/util/netwrk.h"
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
@@ -61,6 +61,7 @@ void * handle_client(void * arg){
     message_type_e message_type = GET_MAP;
 
     while (message_type != BYE){
+        message_type = BYE;
         rc = srecv(sock, &message_type, sizeof(message_type));
         VOID_RETURN_ON_FAILURE(rc);
         printf("Received message %d \n", message_type);
@@ -229,7 +230,7 @@ int start_osd_poller(pthread_t * osd_thread){
     return (EXIT_SUCCESS);
 }
 
-int run_monitor(addr_port_t config){
+int run(addr_port_t config){
     LOG("Running monitor");
     int rc;
 
@@ -257,7 +258,7 @@ int main(int argc, char ** argv){
     cluster_map = build_map_from_string(plane_cluster_map);
 
     // TODO: free all allocated memory
-    return run_monitor(config);
+    return run(config);
 }
 
 
