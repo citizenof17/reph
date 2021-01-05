@@ -16,7 +16,7 @@
 #define BETWEEN_PEER_PORT (10000)
 
 int cluster_map_version = -1;
-int replicas_factor = 1;
+int replicas_factor = 2;
 cluster_map_t * cluster_map;
 char * plane_cluster_map;
 addr_port_t self_config;
@@ -94,24 +94,6 @@ int find_and_fill_object(storage_t * _storage, object_t * obj){
     return i;
 }
 
-int handle_get_object(int sock){
-    LOG("Handling GET");
-    int rc;
-    object_t obj;
-
-    rc = srecv(sock, &obj, sizeof(obj));
-    RETURN_ON_FAILURE(rc);
-    printf("Received key for GET object: %s\n", obj.key.val);
-
-    find_and_fill_object(&storage, &obj);
-    printf("Found object for GET: %s %s\n", obj.key.val, obj.value.val);
-
-    rc = ssend(sock, &obj, sizeof(obj));
-    RETURN_ON_FAILURE(rc);
-
-    return (EXIT_SUCCESS);
-}
-
 void * post_obj(void * _obj_with_addr) {
     LOG("POST");
     object_with_addr_t * temp = _obj_with_addr;
@@ -180,7 +162,7 @@ void replicate(object_t * obj, message_type_e operation){
     for (i = 0; i < replicas_factor; i++){
         addr_port_t target_addr = res->buckets[i]->device->location;
         if (strcmp(target_addr.addr, self_config.addr) == 0 &&
-            target_addr.port == self_config.port){
+                target_addr.port == self_config.port){
             continue;
         }
 
@@ -200,24 +182,42 @@ void replicate(object_t * obj, message_type_e operation){
     clear_crush_result(&res);
 }
 
-
 int save_object(object_t * obj){
     // very costly lookup, can be optimised with hash table?
-    object_t old_obj = empty_object;
+    object_t old_obj = {.version = 0};
     int old_pos = find_and_fill_object(&storage, &old_obj);
 
     if (old_obj.version >= obj->version){
         return NEWER_VERSION_STORED;
     }
     else {
-        push2(&storage, obj, old_obj.version != -1 ? old_pos : -1);
+        push2(&storage, obj, old_obj.version > 0 ? old_pos : -1);
 
         if (obj->primary){
+            obj->primary = 0;
             replicate(obj, POST_OBJECT);
         }
     }
 
     return OP_SUCCESS;
+}
+
+int handle_get_object(int sock){
+    LOG("Handling GET");
+    int rc;
+    object_t obj;
+
+    rc = srecv(sock, &obj, sizeof(obj));
+    RETURN_ON_FAILURE(rc);
+    printf("Received key for GET object: %s\n", obj.key.val);
+
+    find_and_fill_object(&storage, &obj);
+    printf("Found object for GET: %s %s\n", obj.key.val, obj.value.val);
+
+    rc = ssend(sock, &obj, sizeof(obj));
+    RETURN_ON_FAILURE(rc);
+
+    return (EXIT_SUCCESS);
 }
 
 int handle_post_object(int sock){
@@ -233,6 +233,7 @@ int handle_post_object(int sock){
     message_type_e response = save_object(&obj);
     rc = ssend(sock, &response, sizeof(response));
     RETURN_ON_FAILURE(rc);
+    print_storage2(&storage);
 
     return (EXIT_SUCCESS);
 }

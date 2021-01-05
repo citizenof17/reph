@@ -3,5 +3,3 @@
 //
 
 #include "object.h"
-
-const object_t empty_object = {.version = -1, .primary = 0};

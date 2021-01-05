@@ -16,7 +16,7 @@ bucket_t * uniform_bucket_crush(int r, int x, bucket_t * bucket){
 //        return 0;
     }
     else {
-        bucket_size = 1;
+        bucket_size = 2;
         int idx = (hash(x) + r * RANDOM_PRIME) % bucket_size;
         return bucket->inner_buckets[idx];
     }
@@ -29,9 +29,9 @@ void init_uniform_bucket(bucket_t * bucket, int size){
     bucket->_impl = (void *)impl;
     impl->size = size;
 
-    impl->buckets = malloc(sizeof(bucket_t **) * size);
+    impl->buckets = malloc(sizeof(bucket_t *) * size);
     for (int i = 0; i < size; i++){
-        impl->buckets[i] = malloc(sizeof(bucket_t *));
+        impl->buckets[i] = malloc(sizeof(bucket_t));
     }
     bucket->inner_buckets = impl->buckets;
 

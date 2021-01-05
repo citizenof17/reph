@@ -257,6 +257,13 @@ int main(int argc, char ** argv){
 
     cluster_map = build_map_from_string(plane_cluster_map);
 
+    char buf[1000];
+    strcpy(buf, bucket_to_string(cluster_map->root));
+    printf("CLUSTER MAP: %s\n", buf);
+
+    cluster_map_t * cluster_map1 = cluster_map_from_string(buf);
+    printf("CLUSTER MAP: %s\n", bucket_to_string(cluster_map1->root));
+
     // TODO: free all allocated memory
     return run(config);
 }

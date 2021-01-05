@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <signal.h>
 #include "src/util/general.h"
 #include "src/util/cluster_map.h"
 #include "src/util/object.h"
@@ -23,8 +24,7 @@ int cluster_map_version = -1;
 char * plane_cluster_map;
 cluster_map_t * cluster_map;
 
-int storage_size = 0;
-object_t storage[100];
+storage_t storage;
 
 int init_config_from_input(net_config_t * config, int argc, char ** argv) {
     int c;
@@ -169,18 +169,18 @@ int perform_post(){
     pthread_join(thread, &thread_output);
     if ((int *) thread_output == (EXIT_SUCCESS)) {
         LOG("Post was successful, adding it to local storage");
-        push(storage, &storage_size, &obj);
+        push2(&storage, &obj, -1);
     }
     return (EXIT_SUCCESS);
 }
 
 object_key_t get_posted_key(){
-    int obj_pos = rand() % storage_size;
-    return storage[obj_pos].key;
+    int obj_pos = rand() % storage.size;
+    return storage.objects[obj_pos].key;
 }
 
 int perform_get(){
-    if (storage_size == 0) {
+    if (storage.size == 0) {
         return (EXIT_SUCCESS);
     }
 
@@ -241,12 +241,23 @@ int run(net_config_t config){
         rc = perform_some_action();
         RETURN_ON_FAILURE(rc);
 
-        mysleep(10000);
+        mysleep(5000);
     }
 }
 
+
+void intHandler(int smt){
+    print_storage2(&storage);
+    printf("Error code %d\n", smt);
+    exit(1);
+}
+
+
 int main(int argc, char ** argv){
     init_rand();
+    signal(SIGINT | SIGTERM, intHandler);
+
+    storage.size = 0;
 
     net_config_t config = make_default_config();
     init_config_from_input(&config, argc, argv);

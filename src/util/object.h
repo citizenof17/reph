@@ -24,8 +24,6 @@ typedef struct object_t {
     char primary;
 } object_t;
 
-const object_t empty_object;
-
 typedef struct storage_t {
     object_t objects[100];
     int size;

@@ -12,6 +12,7 @@
 
 #define DEFAULT_MAP_SIZE (1024)
 #define SHORT_MAP_SIZE (32)
+#define DEFAULT_BUCKET_STRING_LENGTH (1000)
 
 typedef struct cluster_map_t {
     bucket_t * root;
@@ -43,4 +44,9 @@ cluster_map_t * init_empty_cluster_map();
 int get_map_version(int sock, int * new_map_version);
 int get_cluster_map(int sock, char * plane_cluster_map);
 int update_map_if_needed(net_config_t config, cluster_map_t ** cluster_map);
+
+
+char * bucket_to_string(bucket_t * bucket);
+cluster_map_t * cluster_map_from_string(char * str);
+
 #endif //REPH_CLUSTER_MAP_H

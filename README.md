@@ -1,4 +1,4 @@
-# reph
+# Reph
 RElaxed cePH for a master's degree
 
 To build the project:
