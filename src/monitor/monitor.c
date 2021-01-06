@@ -19,7 +19,6 @@
 #define NOT_ALIVE (0)
 
 
-int cluster_map_version = 0;
 char * plane_cluster_map;
 cluster_map_t * cluster_map;
 
@@ -68,7 +67,7 @@ void * handle_client(void * arg){
 
         switch(message_type){
             case GET_MAP_VERSION:
-                rc = ssend(sock, &cluster_map_version, sizeof(cluster_map_version));
+                rc = ssend(sock, &cluster_map->version, sizeof(cluster_map->version));
                 VOID_RETURN_ON_FAILURE(rc);
                 LOG("Send map version");
                 break;
@@ -96,7 +95,7 @@ void * wait_for_client_connection(void * arg){
     printf("SOCK VALUE IS %d\n", sock);
 
     while (1){
-        printf("Cluster map version is %d\n", cluster_map_version);
+        printf("Cluster map version is %d\n", cluster_map->version);
 
         int new_sock;
         rc = saccept(sock, &new_sock);
@@ -143,14 +142,15 @@ int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) 
 }
 
 void update_cluster_map(){
-// TODO: This is mocked for now. This function should update plane representation of
-//  cluster map to reflect actual state of devices
     LOG("Updating cluster map");
     printf("Updated cluster map version from %d to %d\n",
-           cluster_map_version, cluster_map_version + 1);
-//    gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
-//    printf("New cluster map: %s\n", plane_cluster_map);
-    cluster_map_version++;
+           cluster_map->version, cluster_map->version + 1);
+    cluster_map->version++;
+    free(plane_cluster_map);
+
+    plane_cluster_map = cluster_map_to_string(cluster_map);
+
+    print_cluster_map(cluster_map);
 }
 
 int send_health_check(int sock){
@@ -251,18 +251,11 @@ int main(int argc, char ** argv){
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
-    plane_cluster_map = get_string_map_representation(NULL);
-    // TODO: Remove this and read real config from file
-    gen_random_string(plane_cluster_map, SHORT_MAP_SIZE);
-
-    cluster_map = build_map_from_string(plane_cluster_map);
-
-    char buf[1000];
-    strcpy(buf, bucket_to_string(cluster_map->root));
-    printf("CLUSTER MAP: %s\n", buf);
-
-    cluster_map_t * cluster_map1 = cluster_map_from_string(buf);
-    printf("CLUSTER MAP: %s\n", bucket_to_string(cluster_map1->root));
+    // TODO: Read map filepath from input
+    // cluster_map = cluster_map_from_file("../../sample_cluster.txt");
+    cluster_map = build_default_map();
+    plane_cluster_map = cluster_map_to_string(cluster_map);
+    print_cluster_map(cluster_map);
 
     // TODO: free all allocated memory
     return run(config);

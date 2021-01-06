@@ -94,6 +94,12 @@ cluster_map_t * build_map_from_string(char * plane_map){
     return cl;
 }
 
+cluster_map_t * build_default_map(){
+    map_entry_t map_entry = gen_dummy_map();
+    cluster_map_t * cl = build_map(map_entry);
+    return cl;
+}
+
 
 int get_map_version(int sock, int * new_map_version){
     message_type_e message = GET_MAP_VERSION;
@@ -324,6 +330,7 @@ void add_bucket(char * bucket, int * pos, bucket_t * inner_bucket){
     char * inner_bucket_str = bucket_to_string(inner_bucket);
     strcpy(&bucket[*pos], inner_bucket_str);
     inc(pos, strlen(inner_bucket_str));
+    free(inner_bucket_str);
 }
 
 char * bucket_to_string(bucket_t * bucket){
@@ -344,6 +351,10 @@ char * bucket_to_string(bucket_t * bucket){
 
     close_bucket(bucket_str, &pos);
     return bucket_str;
+}
+
+char * cluster_map_to_string(cluster_map_t * cluster_map){
+    return bucket_to_string(cluster_map->root);
 }
 
 int find_next_space(const char * str, int pos){
@@ -486,4 +497,20 @@ cluster_map_t * cluster_map_from_string(char * str){
     cluster_map->version = 0;
 
     return cluster_map;
+}
+
+cluster_map_t * cluster_map_from_file(char * filepath){
+    FILE *fp;
+    fp = fopen(filepath, "r");
+
+    char buf[DEFAULT_BUCKET_STRING_LENGTH];
+    fscanf(fp, "%s", buf);
+    return cluster_map_from_string(buf);
+}
+
+void print_cluster_map(cluster_map_t * cluster_map){
+    char * cl_str = cluster_map_to_string(cluster_map);
+    printf("CLUSTER MAP: %s\n", cl_str);
+    printf("CLUSTER MAP VERSION: %d\n", cluster_map->version);
+    free(cl_str);
 }

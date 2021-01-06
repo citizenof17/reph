@@ -410,7 +410,7 @@ int wait_for_all(pthread_t * threads, int count){
     return (EXIT_SUCCESS);
 }
 
-int inc(int * counter){
+int inc_(int * counter){
     int val = *counter;
     ++(*counter);
     return val;
@@ -421,20 +421,20 @@ int run(net_config_t config){
     pthread_t threads[total_number_of_threads];
     int rc;
     int thread_num = 0;
-    rc = start_monitor_poller(config, &threads[inc(&thread_num)]);
+    rc = start_monitor_poller(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
 
     while(cluster_map->root == NULL){
         mysleep(100);
     }
 
-    rc = start_client_and_monitor_handler(config.self, &threads[inc(&thread_num)]);
+    rc = start_client_and_monitor_handler(config.self, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-    rc = start_peer_poller(config.self, &threads[inc(&thread_num)]);
+    rc = start_peer_poller(config.self, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-    rc = start_peer_handler(config.self, &threads[inc(&thread_num)]);
+    rc = start_peer_handler(config.self, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-    rc = start_recovery_handler(config, &threads[inc(&thread_num)]);
+    rc = start_recovery_handler(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
 
     return wait_for_all(threads, total_number_of_threads);

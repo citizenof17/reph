@@ -6,6 +6,7 @@
 #define REPH_CLUSTER_MAP_H
 
 #include <stdlib.h>
+#include <stdio.h>
 #include "src/util/bucket.h"
 #include "src/util/device.h"
 #include "src/util/general.h"
@@ -40,13 +41,17 @@ cluster_map_t * build_map_from_file(FILE * fin);
 cluster_map_t * build_map_from_string(char * plane_map);
 cluster_map_t * build_map(map_entry_t map_entry);
 cluster_map_t * init_empty_cluster_map();
+cluster_map_t * build_default_map();
 
 int get_map_version(int sock, int * new_map_version);
 int get_cluster_map(int sock, char * plane_cluster_map);
 int update_map_if_needed(net_config_t config, cluster_map_t ** cluster_map);
 
-
 char * bucket_to_string(bucket_t * bucket);
+char * cluster_map_to_string(cluster_map_t * cluster_map);
 cluster_map_t * cluster_map_from_string(char * str);
+cluster_map_t * cluster_map_from_file(char * filepath);
+
+void print_cluster_map(cluster_map_t * map);
 
 #endif //REPH_CLUSTER_MAP_H
