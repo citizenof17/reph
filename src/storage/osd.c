@@ -167,8 +167,7 @@ void replicate(object_t * obj, message_type_e operation){
     int i;
     for (i = 0; i < res->size; i++){
         addr_port_t target_addr = res->buckets[i]->device->location;
-        if (strcmp(target_addr.addr, self_config.addr) == 0 &&
-                target_addr.port == self_config.port){
+        if (addr_cmp(&target_addr, &self_config) == 0){
             continue;
         }
 
@@ -202,8 +201,12 @@ int save_object(object_t * obj){
     if (old_obj.version >= obj->version){
         return NEWER_VERSION_STORED;
     }
-    else if (old_obj.version != 0 && strcmp(old_obj.value.val, obj->value.val) == 0){
-        // It's already store and replication is not needed
+    else if (old_obj.version != 0){
+        if (strcmp(old_obj.value.val, obj->value.val) == 0){
+            // It's already store and replication is not needed
+            return OP_SUCCESS;
+        }
+        update2(_storage, old_pos, obj);
         return OP_SUCCESS;
     }
     else {
@@ -420,24 +423,99 @@ int start_peer_handler(addr_port_t config, pthread_t * thread){
     return (EXIT_SUCCESS);
 }
 
-void process_secondaries(){
+int in_crush(addr_port_t * addr_to_check, crush_result_t * crush_res){
+    int i;
+    for (i = 0; i < crush_res->size; i++){
+        if (addr_cmp(&crush_res->buckets[i]->device->location, addr_to_check) == 0){
+            return 1;
+        }
+    }
+    return 0;
+}
 
+void process_secondaries(){
+    LOG("Processing secondaries");
+    int i;
+    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+    for (i = 0; i < secondary_storage.size;){
+        object_t obj = secondary_storage.objects[i];
+
+        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+                                            obj_hash(&obj));
+
+        if (res->size > 0){
+            obj.primary = 1;
+            // Check if we are new primary
+            addr_port_t new_primary_location = res->buckets[0]->device->location;
+            if (addr_cmp(&new_primary_location, &self_config) == 0){
+                save_object(&obj);
+                remove2(&secondary_storage, i);
+                continue;
+            }
+
+            // Check if primary of the group is changed and replicate data for it
+            // TODO: (actually check for primary change, as now we just unconditionally
+            //  sending data)
+            replicate_post(&obj, new_primary_location);
+        }
+        // Check if we are still in the list of secondaries
+        if (!in_crush(&self_config, res)){
+            remove2(&secondary_storage, i);
+            continue;
+        }
+        clear_crush_result(&res);
+        i++;
+    }
+    clear_crush_result(&select_from);
 }
 
 void process_primaries(){
+    LOG("Processing primaries");
 
+    // find new primary/secondaries for the object. If we are not primary anymore,
+    // send object to a new primary.
+    int i;
+    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+    for (i = 0; i < primary_storage.size;){
+        object_t obj = primary_storage.objects[i];
+
+        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+                                            obj_hash(&obj));
+
+        if (res->size > 0){
+            // Check if we are not a primary anymore and send object to a new primary
+            addr_port_t new_primary_location = res->buckets[0]->device->location;
+            if (addr_cmp(&new_primary_location, &self_config) != 0){
+                replicate_post(&obj, new_primary_location);
+                remove2(&primary_storage, i);
+                obj.primary = 0;
+                push2(&secondary_storage, &obj, -1);
+                continue;
+            }
+        }
+        // Check if we are still in the list of secondaries
+        if (!in_crush(&self_config, res)){
+            remove2(&primary_storage, i);
+            continue;
+        }
+        clear_crush_result(&res);
+        i++;
+    }
+    clear_crush_result(&select_from);
 }
 
 _Noreturn void * handle_recovery(void * arg){
+    LOG("Started recovery subprocess");
     // objects from secondary_storage:
     // move from secondary_storage to primary_storage if we are now primary on an object
-    // send object from secondary_storage to primary if it's (osd) state is changed
-    // remove object from secondary_storage if we are not primary/secondary OSD anymore
+    // (and also replicate it);
+    // send object from secondary_storage to primary if it's (osd) state is changed;
+    // remove object from secondary_storage if we are not primary/secondary OSD anymore;
 
     // objects from primary_storage:
     // find new primary/secondaries for the object. If we are not primary anymore,
-    // send object to a new primary. Remove it from our store if we are not in the list of
-    // secondaries or move to secondary_storage.
+    // send object to a new primary. If we are not in the list of secondaries remove it
+    // from our storage or move to secondary_storage.
 
     config_transfer_t * _params = arg;
     net_config_t config = _params->config;
@@ -449,8 +527,14 @@ _Noreturn void * handle_recovery(void * arg){
         pthread_mutex_unlock(&recovery_mutex);
 
         if (_recovery_needed){
+            LOG("Recovery is needed");
+
             process_secondaries();
             process_primaries();
+
+            pthread_mutex_lock(&recovery_mutex);
+            recovery_needed = 0;
+            pthread_mutex_unlock(&recovery_mutex);
         }
 
         mysleep(5000);
@@ -486,6 +570,7 @@ int inc_(int * counter){
 }
 
 int run(net_config_t config){
+    LOG("RUNNING");
     const int total_number_of_threads = 5;
     pthread_t threads[total_number_of_threads];
     int rc;
@@ -493,9 +578,7 @@ int run(net_config_t config){
 
     rc = start_monitor_poller(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-//    printf("%d\n", cluster_map->version);
-//    printf("%p\n", cluster_map->root);
-//    fflush(NULL);
+
     pthread_mutex_lock(&cluster_map_mutex);
     while(cluster_map->root == NULL){
         mysleep(100);
@@ -520,6 +603,7 @@ void intHandler(int smt){
     printf("Secondary storage:\n");
     print_storage2(&secondary_storage);
     printf("Error code %d\n", smt);
+    fflush(NULL);
     exit(1);
 }
 
@@ -534,12 +618,12 @@ int main(int argc, char ** argv){
     pthread_mutex_init(&recovery_mutex, NULL);
 
     net_config_t config = make_default_config();
-//    config.self.port = 4246;
     init_config_from_input(&(config.self), argc, argv);
     self_config = config.self;
 
     cluster_map = init_empty_cluster_map();
     pthread_mutex_init(&cluster_map_mutex, NULL);
 
+    fflush(NULL);
     return run(config);
 }

@@ -148,3 +148,10 @@ int sconnect(int sock, sockaddr_t * peer){
     }
     return (EXIT_SUCCESS);
 }
+
+int addr_cmp(addr_port_t * addr1, addr_port_t * addr2){
+    if (strcmp(addr1->addr, addr2->addr) == 0 && addr1->port == addr2->port){
+        return 0;
+    }
+    return addr1->port < addr2->port ? -1 : 1;
+}

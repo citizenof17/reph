@@ -28,5 +28,7 @@ typedef struct device_t {
 void init_device(device_t * device, int capacity, int port, char *addr);
 device_t * make_device(int capacity, int port, char *addr);
 
+int device_cmp(device_t * dev1, device_t * dev2);
+
 
 #endif //REPH_DEVICE_H

@@ -16,3 +16,7 @@ device_t * make_device(int capacity, int port, char *addr){
     init_device(device, capacity, port, addr);
     return device;
 }
+
+int device_cmp(device_t * dev1, device_t * dev2){
+    return addr_cmp(&dev1->location, &dev2->location);
+}

@@ -77,3 +77,10 @@ void remove2(storage_t * storage, int pos){
         storage->objects[i] = storage->objects[i + 1];
     }
 }
+
+void update2(storage_t * storage, int pos, object_t * new_obj){
+    if (pos >= storage->size){
+        return;
+    }
+    storage->objects[pos] = *new_obj;
+}

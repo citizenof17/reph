@@ -68,4 +68,6 @@ int saccept(int sock, int * new_sock);
 
 int sconnect(int sock, sockaddr_t * peer);
 
+int addr_cmp(addr_port_t * addr1, addr_port_t * addr2);
+
 #endif //REPH_NETWRK_H
