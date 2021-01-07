@@ -6,18 +6,19 @@
 #include <assert.h>
 #include "bucket.h"
 
-int RANDOM_PRIME = 67631;
+long long RANDOM_PRIME = 67631;
 
 bucket_t * uniform_bucket_crush(int r, int x, bucket_t * bucket){
-    int bucket_size = ((uniform_bucket_t *)(bucket->_impl))->size;
+    int bucket_size = bucket->size;
+//    int bucket_size = ((uniform_bucket_t *)(bucket->_impl))->size;
     if (bucket_size == 0){
         // This is a leaf bucket and it stores a device
         return bucket;
-//        return 0;
     }
     else {
-        bucket_size = 2;
-        int idx = (hash(x) + r * RANDOM_PRIME) % bucket_size;
+//        bucket_size = 1;
+        int idx = ((long long)hash(x) + r * RANDOM_PRIME) % bucket_size;
+//        printf("sIDX %d\n", idx);
         return bucket->inner_buckets[idx];
     }
 }

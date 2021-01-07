@@ -29,19 +29,19 @@ void clear_crush_result(crush_result_t ** result){
     free(*result);
 }
 
-char failed(bucket_t * output_bucket){
+int failed(bucket_t * output_bucket){
     device_t * device = output_bucket->type == DEVICE ? output_bucket->device : NULL;
     if (device != NULL){
-        return device->state == UP;
+        return device->state != UP;
     }
+    return 1;
+}
+
+int overload(bucket_t * output_bucket, int x){
     return 0;
 }
 
-char overload(bucket_t * output_bucket, int x){
-    return 0;
-}
-
-char in_(bucket_t * output_bucket, crush_result_t * output, int last_pos){
+int in_(bucket_t * output_bucket, crush_result_t * output, int last_pos){
     int i;
     for (i = 0; i < last_pos; i++){
         if (output_bucket == output->buckets[i]){
@@ -70,12 +70,13 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, i
 
             bucket_t * output_bucket = NULL;
 
-            char retry_descent = 0;
+            int retry_descent = 0;
             do {
                 bucket_t * bucket = input->buckets[i];
-                char retry_bucket = 0;
+                int retry_bucket = 0;
 
                 do {
+                    retry_bucket = 0;
                     int rd = 0;
 //                    if ("first n") {  // TODO: Check what is this?
                     rd = r + failures;
@@ -85,7 +86,7 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, i
 
                     output_bucket = bucket->c(rd, x, bucket);
 
-                    char in_output = in_(output_bucket, output, last_pos);
+                    int in_output = in_(output_bucket, output, last_pos);
                     if (output_bucket->class != t){
                         bucket = output_bucket;
                         retry_bucket = 1;
@@ -104,12 +105,13 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, i
                 } while(retry_bucket);
             } while(retry_descent && replica_failures < MAX_REPLICA_FAILURES);
 
-            if (output_bucket != NULL){
+            if (output_bucket != NULL && !failed(output_bucket)){
                 output->buckets[last_pos] = output_bucket;
                 last_pos++;
             }
         }
     }
 
+    output->size = last_pos;
     return output;
 }

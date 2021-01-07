@@ -72,7 +72,7 @@ void * handle_client(void * arg){
                 LOG("Send map version");
                 break;
             case GET_MAP:
-                rc = ssend(sock, plane_cluster_map, strlen(plane_cluster_map));
+                rc = ssend(sock, plane_cluster_map, DEFAULT_MAP_SIZE);
                 VOID_RETURN_ON_FAILURE(rc);
                 LOG("Send map");
                 break;
@@ -150,6 +150,7 @@ void update_cluster_map(){
 
     plane_cluster_map = cluster_map_to_string(cluster_map);
 
+    printf("Plane cluster map: %s\n", plane_cluster_map);
     print_cluster_map(cluster_map);
 }
 

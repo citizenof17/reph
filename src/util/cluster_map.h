@@ -11,9 +11,9 @@
 #include "src/util/device.h"
 #include "src/util/general.h"
 
-#define DEFAULT_MAP_SIZE (1024)
+#define DEFAULT_MAP_SIZE (2000)
 #define SHORT_MAP_SIZE (32)
-#define DEFAULT_BUCKET_STRING_LENGTH (1000)
+#define DEFAULT_BUCKET_STRING_LENGTH (2000)
 
 typedef struct cluster_map_t {
     bucket_t * root;

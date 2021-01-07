@@ -126,15 +126,12 @@ int get_cluster_map(int sock, char * plane_cluster_map){
 
     // TODO: Probably you will read more than expected from that socket (because
     //  DEFAULT_MAP_SIZE is more than actual map size is), be careful here
-    char buf[DEFAULT_MAP_SIZE];
-    rc = srecv(sock, buf, DEFAULT_MAP_SIZE);
+    rc = srecv(sock, plane_cluster_map, DEFAULT_MAP_SIZE);
     RETURN_ON_FAILURE(rc);
     LOG("Received new plane cluster map representation");
 
     LOG("Cluster map is updated");
-//    printf("Old cluster map %s\n", plane_cluster_map);
-    strcpy(plane_cluster_map, buf);
-//    printf("New cluster map %s\n", plane_cluster_map);
+    printf("New cluster map %s\n", plane_cluster_map);
 
     return (EXIT_SUCCESS);
 }
@@ -185,7 +182,7 @@ int update_map_if_needed(net_config_t config, cluster_map_t ** cluster_map){
         RETURN_ON_FAILURE(rc);
 
         free_map(cluster_map);
-        *cluster_map = build_map_from_string(plane_cluster_map);
+        *cluster_map = cluster_map_from_string(plane_cluster_map);
         (*cluster_map)->version = new_map_version;
     }
 
@@ -334,7 +331,9 @@ void add_bucket(char * bucket, int * pos, bucket_t * inner_bucket){
 }
 
 char * bucket_to_string(bucket_t * bucket){
-    char * bucket_str = malloc(sizeof(char) * DEFAULT_BUCKET_STRING_LENGTH);
+    char * bucket_str = malloc(sizeof(char) * DEFAULT_MAP_SIZE);
+    memset(bucket_str, 0, DEFAULT_MAP_SIZE);
+
     int pos = 0;
     open_bucket(bucket_str, &pos);
 
@@ -469,7 +468,7 @@ void string_to_bucket(char * bucket_str, int pos, bucket_t * bucket){
 }
 
 void remove_special_chars(char * str){
-    char buf[DEFAULT_BUCKET_STRING_LENGTH];
+    char buf[DEFAULT_MAP_SIZE];
 
     int pos_res = 0;
     int pos_orig = 0;
@@ -503,7 +502,7 @@ cluster_map_t * cluster_map_from_file(char * filepath){
     FILE *fp;
     fp = fopen(filepath, "r");
 
-    char buf[DEFAULT_BUCKET_STRING_LENGTH];
+    char buf[DEFAULT_MAP_SIZE];
     fscanf(fp, "%s", buf);
     return cluster_map_from_string(buf);
 }

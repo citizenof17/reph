@@ -67,11 +67,18 @@ net_config_t make_default_config(){
     return config;
 }
 
-addr_port_t get_target_device_location(object_t * obj){
+int get_target_device_location(object_t * obj, addr_port_t * location){
     crush_result_t * input = init_crush_input(1, cluster_map->root);
     crush_result_t * result = crush_select(input, DEVICE, 1, obj_hash(obj));
 
-    return result->buckets[0]->device->location;
+    if (result->size > 0){
+        addr_port_t found_location = result->buckets[0]->device->location;
+        strcpy(location->addr, found_location.addr);
+        location->port = found_location.port;
+        return (EXIT_SUCCESS);
+    }
+
+    return (EXIT_FAILURE);
 }
 
 
@@ -81,10 +88,12 @@ void* post_obj(void * _obj) {
     object_t obj = *temp_obj;
     printf("Posting key and value: %s %s\n", obj.key.val, obj.value.val);
 
-    addr_port_t target_location = get_target_device_location(&obj);
+    addr_port_t target_location;
+    int rc = get_target_device_location(&obj, &target_location);
+    printf("Target location: %s %d, found: %d\n", target_location.addr, target_location.port, !rc);
+    VOID_RETURN_ON_FAILURE(rc)
 
-    printf("Target location: %s %d\n", target_location.addr, target_location.port);
-    int sock, rc;
+    int sock;
     rc = connect_to_peer(&sock, target_location);
     VOID_RETURN_ON_FAILURE(rc)
 
@@ -113,9 +122,11 @@ void* get_obj(void * _obj) {
     LOG("GET");
     object_t * obj = _obj;
 
-    addr_port_t target_location = get_target_device_location(obj);
+    addr_port_t target_location;
+    int rc = get_target_device_location(obj, &target_location);
+    VOID_RETURN_ON_FAILURE(rc);
 
-    int sock, rc;
+    int sock;
     rc = connect_to_peer(&sock, target_location);
     VOID_RETURN_ON_FAILURE(rc);
 
@@ -191,6 +202,7 @@ int perform_get(){
     pthread_t thread;
     int rc;
     object_t obj;
+    memset(&obj, 0, sizeof(object_t));
     obj.key = key;
     rc = pthread_create(&thread, NULL, get_obj, &obj);
     if (rc != 0){
@@ -241,7 +253,7 @@ int run(net_config_t config){
         rc = perform_some_action();
         RETURN_ON_FAILURE(rc);
 
-        mysleep(5000);
+        mysleep(7000);
     }
 }
 

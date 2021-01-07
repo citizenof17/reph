@@ -15,13 +15,17 @@
 
 #define BETWEEN_PEER_PORT (10000)
 
-int cluster_map_version = -1;
 int replicas_factor = 2;
+pthread_mutex_t cluster_map_mutex;
 cluster_map_t * cluster_map;
-char * plane_cluster_map;
 addr_port_t self_config;
 
-storage_t storage;
+pthread_mutex_t recovery_mutex;
+int recovery_needed;
+
+storage_t primary_storage;    // objects for which we are primary osd
+storage_t secondary_storage;  // objects for which we are secondary osd
+
 
 net_config_t make_default_config(){
     net_config_t config = {
@@ -158,8 +162,10 @@ void replicate(object_t * obj, message_type_e operation){
     crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
                                         obj_hash(obj));
 
+    // actually found (active/alive) osd count might be less that expected replication
+    // factor
     int i;
-    for (i = 0; i < replicas_factor; i++){
+    for (i = 0; i < res->size; i++){
         addr_port_t target_addr = res->buckets[i]->device->location;
         if (strcmp(target_addr.addr, self_config.addr) == 0 &&
                 target_addr.port == self_config.port){
@@ -182,16 +188,26 @@ void replicate(object_t * obj, message_type_e operation){
     clear_crush_result(&res);
 }
 
+storage_t * get_storage(int primary){
+    return primary ? &primary_storage : &secondary_storage;
+}
+
 int save_object(object_t * obj){
     // very costly lookup, can be optimised with hash table?
     object_t old_obj = {.version = 0};
-    int old_pos = find_and_fill_object(&storage, &old_obj);
+    storage_t * _storage = get_storage(obj->primary);
+
+    int old_pos = find_and_fill_object(_storage, &old_obj);
 
     if (old_obj.version >= obj->version){
         return NEWER_VERSION_STORED;
     }
+    else if (old_obj.version != 0 && strcmp(old_obj.value.val, obj->value.val) == 0){
+        // It's already store and replication is not needed
+        return OP_SUCCESS;
+    }
     else {
-        push2(&storage, obj, old_obj.version > 0 ? old_pos : -1);
+        push2(_storage, obj, old_obj.version > 0 ? old_pos : -1);
 
         if (obj->primary){
             obj->primary = 0;
@@ -206,12 +222,21 @@ int handle_get_object(int sock){
     LOG("Handling GET");
     int rc;
     object_t obj;
+    memset(&obj, 0, sizeof(obj));
 
     rc = srecv(sock, &obj, sizeof(obj));
     RETURN_ON_FAILURE(rc);
     printf("Received key for GET object: %s\n", obj.key.val);
 
-    find_and_fill_object(&storage, &obj);
+    // Look in primary_storage first
+    obj.primary = 1;
+    find_and_fill_object(get_storage(obj.primary), &obj);
+    if (obj.version == 0){
+        // Object was not found in the expected storage, try to find it in another one
+        // This might happen when current OSD is secondary
+        find_and_fill_object(get_storage(!obj.primary), &obj);
+    }
+
     printf("Found object for GET: %s %s\n", obj.key.val, obj.value.val);
 
     rc = ssend(sock, &obj, sizeof(obj));
@@ -233,7 +258,8 @@ int handle_post_object(int sock){
     message_type_e response = save_object(&obj);
     rc = ssend(sock, &response, sizeof(response));
     RETURN_ON_FAILURE(rc);
-    print_storage2(&storage);
+    print_storage2(&primary_storage);
+    print_storage2(&secondary_storage);
 
     return (EXIT_SUCCESS);
 }
@@ -254,7 +280,7 @@ void * handle_client_or_monitor(void * arg){
     sock = _params->sock;
     pthread_mutex_unlock(&_params->mutex);
 
-    message_type_e message_type = GET_MAP;
+    message_type_e message_type = HEALTH_CHECK;
 
     while (message_type != BYE){
         rc = srecv(sock, &message_type, sizeof(message_type));
@@ -354,9 +380,17 @@ void * poll_cluster_map(void * arg){
 
     while (1) {
         int rc;
+        int old_version = cluster_map->version;
+        pthread_mutex_lock(&cluster_map_mutex);
         rc = update_map_if_needed(config, &cluster_map);
+        pthread_mutex_unlock(&cluster_map_mutex);
         VOID_RETURN_ON_FAILURE(rc);
 
+        if (cluster_map->version > old_version){
+            pthread_mutex_lock(&recovery_mutex);
+            recovery_needed = 1;
+            pthread_mutex_unlock(&recovery_mutex);
+        }
         mysleep(10000);
     }
 }
@@ -386,10 +420,15 @@ int start_peer_handler(addr_port_t config, pthread_t * thread){
     return (EXIT_SUCCESS);
 }
 
-int start_recovery_handler(net_config_t config, pthread_t * thread){
+void process_secondaries(){
 
-    // get new map from monitor
+}
 
+void process_primaries(){
+
+}
+
+_Noreturn void * handle_recovery(void * arg){
     // objects from secondary_storage:
     // move from secondary_storage to primary_storage if we are now primary on an object
     // send object from secondary_storage to primary if it's (osd) state is changed
@@ -399,6 +438,36 @@ int start_recovery_handler(net_config_t config, pthread_t * thread){
     // find new primary/secondaries for the object. If we are not primary anymore,
     // send object to a new primary. Remove it from our store if we are not in the list of
     // secondaries or move to secondary_storage.
+
+    config_transfer_t * _params = arg;
+    net_config_t config = _params->config;
+    pthread_mutex_unlock(&_params->mutex);
+
+    while (1) {
+        pthread_mutex_lock(&recovery_mutex);
+        int _recovery_needed = recovery_needed;
+        pthread_mutex_unlock(&recovery_mutex);
+
+        if (_recovery_needed){
+            process_secondaries();
+            process_primaries();
+        }
+
+        mysleep(5000);
+    }
+}
+
+int start_recovery_handler(net_config_t config, pthread_t * thread){
+    config_transfer_t params;
+    init_config_transfer(&params, config);
+
+    int rc;
+    rc = pthread_create(thread, NULL, handle_recovery, &params);
+    if (rc != 0) {
+        perror("Error creating thread");
+        return (EXIT_FAILURE);
+    }
+    pthread_mutex_lock(&params.mutex);
 
     return (EXIT_SUCCESS);
 }
@@ -421,19 +490,24 @@ int run(net_config_t config){
     pthread_t threads[total_number_of_threads];
     int rc;
     int thread_num = 0;
+
     rc = start_monitor_poller(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-
+//    printf("%d\n", cluster_map->version);
+//    printf("%p\n", cluster_map->root);
+//    fflush(NULL);
+    pthread_mutex_lock(&cluster_map_mutex);
     while(cluster_map->root == NULL){
         mysleep(100);
     }
+    pthread_mutex_unlock(&cluster_map_mutex);
 
     rc = start_client_and_monitor_handler(config.self, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-    rc = start_peer_poller(config.self, &threads[inc_(&thread_num)]);
-    RETURN_ON_FAILURE(rc);
-    rc = start_peer_handler(config.self, &threads[inc_(&thread_num)]);
-    RETURN_ON_FAILURE(rc);
+//    rc = start_peer_poller(config.self, &threads[inc_(&thread_num)]);
+//    RETURN_ON_FAILURE(rc);
+//    rc = start_peer_handler(config.self, &threads[inc_(&thread_num)]);
+//    RETURN_ON_FAILURE(rc);
     rc = start_recovery_handler(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
 
@@ -441,7 +515,10 @@ int run(net_config_t config){
 }
 
 void intHandler(int smt){
-    print_storage2(&storage);
+    printf("Primary storage:\n");
+    print_storage2(&primary_storage);
+    printf("Secondary storage:\n");
+    print_storage2(&secondary_storage);
     printf("Error code %d\n", smt);
     exit(1);
 }
@@ -450,13 +527,19 @@ void intHandler(int smt){
 int main(int argc, char ** argv){
     signal(SIGINT | SIGTERM, intHandler);
 
-    storage.size = 0;
+    primary_storage.size = 0;
+    secondary_storage.size = 0;
+
+    recovery_needed = 0;
+    pthread_mutex_init(&recovery_mutex, NULL);
 
     net_config_t config = make_default_config();
+//    config.self.port = 4246;
     init_config_from_input(&(config.self), argc, argv);
     self_config = config.self;
 
     cluster_map = init_empty_cluster_map();
+    pthread_mutex_init(&cluster_map_mutex, NULL);
 
     return run(config);
 }
