@@ -77,6 +77,7 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, i
 
                 do {
                     retry_bucket = 0;
+                    retry_descent = 0;
                     int rd = 0;
 //                    if ("first n") {  // TODO: Check what is this?
                     rd = r + failures;

@@ -19,9 +19,6 @@
 
 #define POSSIBLE_OPERATIONS_COUNT (4)
 
-// Version starts from 0, thus -1 is always outdated and will cause local map update
-int cluster_map_version = -1;
-char * plane_cluster_map;
 cluster_map_t * cluster_map;
 
 storage_t storage;
@@ -191,6 +188,7 @@ object_key_t get_posted_key(){
 }
 
 int perform_get(){
+    LOG("Preforming GET");
     if (storage.size == 0) {
         return (EXIT_SUCCESS);
     }
@@ -253,7 +251,7 @@ int run(net_config_t config){
         rc = perform_some_action();
         RETURN_ON_FAILURE(rc);
 
-        mysleep(7000);
+        mysleep(15000);
     }
 }
 
@@ -267,14 +265,14 @@ void intHandler(int smt){
 
 int main(int argc, char ** argv){
     init_rand();
-    signal(SIGINT | SIGTERM, intHandler);
+    signal(SIGINT, intHandler);
+    signal(SIGTERM, intHandler);
 
     storage.size = 0;
 
     net_config_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
-    plane_cluster_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
     cluster_map = init_empty_cluster_map();
 
     return run(config);

@@ -104,8 +104,9 @@ void * post_obj(void * _obj_with_addr) {
     object_t obj = temp->obj;
     addr_port_t target_location = temp->addr_port;
 
-    printf("Posting key and value: %s %s to %s %d\n", obj.key.val, obj.value.val,
-           target_location.addr, target_location.port);
+    printf("Posting key and value: %s %s to %s %d, version, primary: %d %d\n",
+           obj.key.val, obj.value.val, target_location.addr, target_location.port,
+           obj.version, obj.primary);
 
     int sock, rc;
     rc = connect_to_peer(&sock, target_location);
@@ -157,16 +158,11 @@ int replicate_delete(object_t * obj){
     return (EXIT_SUCCESS);
 }
 
-void replicate(object_t * obj, message_type_e operation){
-    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
-    crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
-                                        obj_hash(obj));
-
-    // actually found (active/alive) osd count might be less that expected replication
-    // factor
+void replicate_for_multiple(crush_result_t * crush_res, object_t * obj,
+                            message_type_e operation){
     int i;
-    for (i = 0; i < res->size; i++){
-        addr_port_t target_addr = res->buckets[i]->device->location;
+    for (i = 0; i < crush_res->size; i++){
+        addr_port_t target_addr = crush_res->buckets[i]->device->location;
         if (addr_cmp(&target_addr, &self_config) == 0){
             continue;
         }
@@ -181,8 +177,17 @@ void replicate(object_t * obj, message_type_e operation){
             default:
                 break;
         };
-
     }
+}
+
+void replicate(object_t * obj, message_type_e operation){
+    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+    crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+                                        obj_hash(obj));
+
+    // actually found (active/alive) osd count might be less that expected replication
+    // factor
+    replicate_for_multiple(res, obj, operation);
     clear_crush_result(&select_from);
     clear_crush_result(&res);
 }
@@ -193,24 +198,30 @@ storage_t * get_storage(int primary){
 
 int save_object(object_t * obj){
     // very costly lookup, can be optimised with hash table?
-    object_t old_obj = {.version = 0};
+    object_t old_obj;
+    memset(&old_obj, 0, sizeof(object_t));
+    strcpy(old_obj.key.val, obj->key.val);
+
     storage_t * _storage = get_storage(obj->primary);
 
     int old_pos = find_and_fill_object(_storage, &old_obj);
 
+    printf("Found old obj (pos, version, primary, key, val): %d %d %d %s %s\n",
+           old_pos, old_obj.version, old_obj.primary, old_obj.key.val, old_obj.value.val);
+
     if (old_obj.version >= obj->version){
         return NEWER_VERSION_STORED;
     }
-    else if (old_obj.version != 0){
-        if (strcmp(old_obj.value.val, obj->value.val) == 0){
-            // It's already store and replication is not needed
-            return OP_SUCCESS;
-        }
-        update2(_storage, old_pos, obj);
-        return OP_SUCCESS;
-    }
+//    else if (old_obj.version != 0){
+//        if (strcmp(old_obj.value.val, obj->value.val) == 0){
+//            // It's already store and replication is not needed
+//            return OP_SUCCESS;
+//        }
+//        update2(_storage, old_pos, obj);
+//        return OP_SUCCESS;
+//    }
     else {
-        push2(_storage, obj, old_obj.version > 0 ? old_pos : -1);
+        push2(_storage, obj, -1);
 
         if (obj->primary){
             obj->primary = 0;
@@ -382,6 +393,7 @@ void * poll_cluster_map(void * arg){
     pthread_mutex_unlock(&_params->mutex);
 
     while (1) {
+        // TODO: Need to update_map.. more frequently than recovery
         int rc;
         int old_version = cluster_map->version;
         pthread_mutex_lock(&cluster_map_mutex);
@@ -488,23 +500,26 @@ void process_primaries(){
             if (addr_cmp(&new_primary_location, &self_config) != 0){
                 replicate_post(&obj, new_primary_location);
                 remove2(&primary_storage, i);
-                obj.primary = 0;
-                push2(&secondary_storage, &obj, -1);
                 continue;
             }
         }
-        // Check if we are still in the list of secondaries
-        if (!in_crush(&self_config, res)){
+
+        if (res->size == 0){
             remove2(&primary_storage, i);
             continue;
         }
+
+        // We are good. Still a primary, let's replicate to secondaries as they might've
+        // changed
+        obj.primary = 0;
+        replicate_for_multiple(res, &obj, POST_OBJECT);
         clear_crush_result(&res);
         i++;
     }
     clear_crush_result(&select_from);
 }
 
-_Noreturn void * handle_recovery(void * arg){
+_Noreturn void * perform_recovery(void * arg){
     LOG("Started recovery subprocess");
     // objects from secondary_storage:
     // move from secondary_storage to primary_storage if we are now primary on an object
@@ -535,18 +550,20 @@ _Noreturn void * handle_recovery(void * arg){
             pthread_mutex_lock(&recovery_mutex);
             recovery_needed = 0;
             pthread_mutex_unlock(&recovery_mutex);
+            print_storage2(&primary_storage);
+            print_storage2(&secondary_storage);
         }
 
         mysleep(5000);
     }
 }
 
-int start_recovery_handler(net_config_t config, pthread_t * thread){
+int start_recovery_process(net_config_t config, pthread_t * thread){
     config_transfer_t params;
     init_config_transfer(&params, config);
 
     int rc;
-    rc = pthread_create(thread, NULL, handle_recovery, &params);
+    rc = pthread_create(thread, NULL, perform_recovery, &params);
     if (rc != 0) {
         perror("Error creating thread");
         return (EXIT_FAILURE);
@@ -579,19 +596,19 @@ int run(net_config_t config){
     rc = start_monitor_poller(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
 
-    pthread_mutex_lock(&cluster_map_mutex);
     while(cluster_map->root == NULL){
         mysleep(100);
     }
-    pthread_mutex_unlock(&cluster_map_mutex);
 
+    LOG("Starting client and monitor handler");
     rc = start_client_and_monitor_handler(config.self, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
 //    rc = start_peer_poller(config.self, &threads[inc_(&thread_num)]);
 //    RETURN_ON_FAILURE(rc);
 //    rc = start_peer_handler(config.self, &threads[inc_(&thread_num)]);
 //    RETURN_ON_FAILURE(rc);
-    rc = start_recovery_handler(config, &threads[inc_(&thread_num)]);
+    LOG("Starting recovery");
+    rc = start_recovery_process(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
 
     return wait_for_all(threads, total_number_of_threads);
@@ -609,7 +626,8 @@ void intHandler(int smt){
 
 
 int main(int argc, char ** argv){
-    signal(SIGINT | SIGTERM, intHandler);
+    signal(SIGINT, intHandler);
+    signal(SIGTERM, intHandler);
 
     primary_storage.size = 0;
     secondary_storage.size = 0;

@@ -5,7 +5,7 @@ import sys
 
 output_folder = 'captured_output'
 default_port = 4242
-total_osd_count = 4
+total_osd_count = 5
 
 
 def create_output_folder(folder_name=output_folder):

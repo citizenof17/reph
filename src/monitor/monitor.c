@@ -14,7 +14,7 @@
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
 
-#define HEALTH_CHECK_DELAY (15 * 1000)  // ms to wait -> 1 min
+#define HEALTH_CHECK_DELAY (2 * 1000)  // ms to wait -> 1 min
 #define ALIVE (1)
 #define NOT_ALIVE (0)
 

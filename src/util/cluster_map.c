@@ -97,6 +97,7 @@ cluster_map_t * build_map_from_string(char * plane_map){
 cluster_map_t * build_default_map(){
     map_entry_t map_entry = gen_dummy_map();
     cluster_map_t * cl = build_map(map_entry);
+    cl->version = 0;
     return cl;
 }
 
@@ -184,6 +185,7 @@ int update_map_if_needed(net_config_t config, cluster_map_t ** cluster_map){
         free_map(cluster_map);
         *cluster_map = cluster_map_from_string(plane_cluster_map);
         (*cluster_map)->version = new_map_version;
+        print_cluster_map(*cluster_map);
     }
 
     send_bye(sock);
@@ -405,6 +407,7 @@ bucket_class_e read_class(char * bucket_str, int * pos){
 
 int read_int(char * bucket_str, int * pos){
     char buf[20];
+    memset(buf, 0, sizeof(buf));
     get_token(bucket_str, pos, buf);
 
     int res = atoi(buf);
@@ -446,24 +449,28 @@ void read_device(char * bucket_str, int * pos, device_t * device){
     inc(pos, 2);
 }
 
-void string_to_bucket(char * bucket_str, int pos, bucket_t * bucket){
+void string_to_bucket(char * bucket_str, int * pos, bucket_t * bucket){
     // Initially, pos should always point at '{'
-    pos += 2;  // bucket_str[0:2] == '{ ', skip it
+    inc(pos, 2);  // bucket_str[0:2] == '{ ', skip it
 
-    bucket_type_e type = read_type(bucket_str, &pos);
-    bucket_class_e class = read_class(bucket_str, &pos);
-    int size = read_int(bucket_str, &pos);
+    bucket_type_e type = read_type(bucket_str, pos);
+    bucket_class_e class = read_class(bucket_str, pos);
+    int size = read_int(bucket_str, pos);
 
     init_bucket(bucket, class, type, size);
 
     if (bucket->class == DEVICE){
         bucket->device = malloc(sizeof(device_t));
-        read_device(bucket_str, &pos, bucket->device);
+        read_device(bucket_str, pos, bucket->device);
+    }
+    else{
+        bucket->device = NULL;
     }
 
     int i;
     for (i = 0; i < size; i++){
         string_to_bucket(bucket_str, pos, bucket->inner_buckets[i]);
+        inc(pos, 2);
     }
 }
 
@@ -492,7 +499,8 @@ cluster_map_t * cluster_map_from_string(char * str){
 
     cluster_map_t * cluster_map = malloc(sizeof(cluster_map_t));
     cluster_map->root = malloc(sizeof(bucket_t));
-    string_to_bucket(str, 0, cluster_map->root);
+    int pos = 0;
+    string_to_bucket(str, &pos, cluster_map->root);
     cluster_map->version = 0;
 
     return cluster_map;
