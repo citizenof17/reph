@@ -12,24 +12,25 @@ include_directories("${BASEPATH}")
 set(UTIL_SOURCES
         src/util/bucket.c
         src/util/cluster_map.c
-        src/util/log.c
-        src/util/hash.c
         src/util/device.c
+        src/util/general.c
+        src/util/hash.c
+        src/util/log.c
         src/util/mysleep.c
         src/util/netwrk.c
-        src/util/general.c
+        src/util/object.c
         src/crush.c
 )
 
-set(TEST_SOURCES
-        test_all.c
-        ${UTIL_SOURCES}
-        )
-
-set(MAIN_SOURCES
-        main.c
-        ${UTIL_SOURCES}
-)
+#set(TEST_SOURCES
+#        test_all.c
+#        ${UTIL_SOURCES}
+#        )
+#
+#set(MAIN_SOURCES
+#        main.c
+#        ${UTIL_SOURCES}
+#)
 
 set(CLIENT_SOURCES
         src/client/client.c
@@ -47,12 +48,12 @@ set(OSD_SOURCES
         )
 
 
-add_executable(reph ${MAIN_SOURCES})
+#add_executable(reph ${MAIN_SOURCES})
 add_executable(client ${CLIENT_SOURCES})
 add_executable(monitor ${MONITOR_SOURCES})
 add_executable(osd ${OSD_SOURCES})
-add_executable(test ${TEST_SOURCES})
+#add_executable(test ${TEST_SOURCES})
 
-add_executable(blah blah.c)
+#add_executable(blah blah.c)
 
 target_link_libraries(monitor pthread)
