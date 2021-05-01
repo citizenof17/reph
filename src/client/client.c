@@ -83,7 +83,7 @@ void* post_obj(void * _obj) {
     LOG("POST");
     object_t *temp_obj = _obj;
     object_t obj = *temp_obj;
-    printf("Posting key and value: %s %s\n", obj.key.val, obj.value.val);
+    printf("++++++ Posting key and value: %s %s ++++++\n", obj.key.val, obj.value.val);
 
     addr_port_t target_location;
     int rc = get_target_device_location(&obj, &target_location);
@@ -103,11 +103,11 @@ void* post_obj(void * _obj) {
 
     rc = ssend(sock, &obj, sizeof(obj));
     VOID_RETURN_ON_FAILURE(rc)
-    LOG("Sent POST");
+    LOG("Sent obj for POST");
 
     rc = srecv(sock, &message, sizeof(message));
-    VOID_RETURN_ON_FAILURE(rc)
     printf("Response code for POST: %d\n", message);
+    VOID_RETURN_ON_FAILURE(rc)
 
     send_bye(sock);
     close(sock);
@@ -150,7 +150,7 @@ void* get_obj(void * _obj) {
 void* update_obj(void * _obj) {
     LOG("UPDATE");
     object_t * obj = _obj;
-    printf("Update key and value: %s %s\n", obj->key.val, obj->value.val);
+    printf("++++++Update key and value: %s %s ++++++\n", obj->key.val, obj->value.val);
 
     addr_port_t target_location;
     int rc = get_target_device_location(obj, &target_location);
@@ -173,8 +173,8 @@ void* update_obj(void * _obj) {
     LOG("Sent UPDATE");
 
     rc = srecv(sock, &message, sizeof(message));
-    VOID_RETURN_ON_FAILURE(rc)
     printf("Response code for UPDATE: %d\n", message);
+    VOID_RETURN_ON_FAILURE(rc)
 
     send_bye(sock);
     close(sock);
@@ -182,9 +182,45 @@ void* update_obj(void * _obj) {
     return ((void *)EXIT_SUCCESS);
 }
 
-void delete_obj() {}
+void* del_obj(void * _obj) {
+    LOG("DELETE");
+    object_t *temp_obj = _obj;
+    object_t obj = *temp_obj;
+    printf("Delete obj with key: %s\n", obj.key.val);
+
+    addr_port_t target_location;
+    int rc = get_target_device_location(&obj, &target_location);
+    printf("Target location: %s %d, found: %d\n", target_location.addr, target_location.port, !rc);
+    VOID_RETURN_ON_FAILURE(rc)
+
+    int sock;
+    rc = connect_to_peer(&sock, target_location);
+    VOID_RETURN_ON_FAILURE(rc)
+
+    LOG("Client connected to server");
+
+    message_type_e message = DELETE_OBJECT;
+    rc = ssend(sock, &message, sizeof(message));
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("Send request for DELETE");
+
+    rc = ssend(sock, &obj, sizeof(obj));
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("Sent obj for DELETE");
+
+    rc = srecv(sock, &message, sizeof(message));
+    printf("Response code for DELETE: %d\n", message);
+    VOID_RETURN_ON_FAILURE(rc)
+
+    send_bye(sock);
+    close(sock);
+
+    return ((void *)EXIT_SUCCESS);
+}
 
 int perform_post(){
+    LOG("Performing POST");
+
     object_t obj;
     object_key_t key;
     object_value_t value;
@@ -229,7 +265,7 @@ int perform_get(){
 
     object_key_t key = get_posted_key();
 
-    printf("GET request for the following key: %s\n", key.val);
+    printf("++++++ GET request for the following key: %s ++++++\n", key.val);
 
     pthread_t thread;
     int rc;
@@ -256,7 +292,7 @@ int perform_get(){
 int perform_update(){
     LOG("Performing UPDATE");
     int try_post = rand() % 10 < 2;
-    if (try_post){
+    if (try_post) {
         int put_res = perform_post();
         printf("Update result: %d\n", put_res);
         return put_res;
@@ -295,6 +331,50 @@ int perform_update(){
     return (EXIT_SUCCESS);
 }
 
+int perform_delete(){
+    // TODO: delete object from local stora. Leaving it as it for not to also test GET for a removed
+    //  object
+    LOG("Performing DELETE");
+    object_key_t key;
+
+    int try_delete = rand() % 10 < 2;
+    if (try_delete) {
+        gen_random_string(key.val, 5);
+    }
+    else if (storage.size > 0){
+        key = get_posted_key();
+    }
+    else {
+        return (EXIT_SUCCESS);
+    }
+
+    printf("DELETE request for the following key: %s\n", key.val);
+
+    pthread_t thread;
+    int rc;
+    object_t obj;
+    memset(&obj, 0, sizeof(object_t));
+    obj.key = key;
+    obj.primary = 1;
+
+    rc = pthread_create(&thread, NULL, del_obj, &obj);
+    if (rc != 0){
+        perror("Error creating thread");
+        return (EXIT_FAILURE);
+    }
+
+    void * thread_output;
+    pthread_join(thread, &thread_output);
+    if ((int *) thread_output == (EXIT_SUCCESS)) {
+        LOG("Delete was successful");
+    }
+    else {
+        printf("Something goes wrong in del_obj, result: %d\n", *((int *)thread_output));
+    }
+
+    return (EXIT_SUCCESS);
+}
+
 int perform_some_action(){
     message_type_e possible_operations[POSSIBLE_OPERATIONS_COUNT] =
             {POST_OBJECT, GET_OBJECT, UPDATE_OBJECT, DELETE_OBJECT};
@@ -305,18 +385,11 @@ int perform_some_action(){
     int action_number = rand() % 10;
     printf("Action number: %d\n", action_number);
 
-    if (action_number < 5){
-        // POST is most preferable operation
-        action_number = 0;
-    }
-    else if (action_number < 8){
-        // GET
-        action_number = 1;
-    }
-    else if (action_number < 10){
-        // UPDATE
-        action_number = 2;
-    }
+    // TODO: Change priorities
+    if      (action_number < 3) { action_number = 0; }  // POST - most preferable operation
+    else if (action_number < 5) { action_number = 1; }  // GET
+    else if (action_number < 7) { action_number = 2; }  // UPDATE
+    else if (action_number < 10){ action_number = 3; }  // DELETE
 
     message_type_e action = possible_operations[action_number];
 
@@ -329,6 +402,9 @@ int perform_some_action(){
             break;
         case UPDATE_OBJECT:
             perform_update();
+            break;
+        case DELETE_OBJECT:
+            perform_delete();
             break;
         default:
             LOG("Unsupported operation");

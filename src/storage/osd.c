@@ -88,15 +88,11 @@ int handle_health_check(int sock){
     return (EXIT_SUCCESS);
 }
 
-int find_and_fill_object(storage_t * _storage, object_t * obj){
-    // TODO: Optimize from linear search to log(n)
-
+int find_object(storage_t * _storage, object_t * obj){
     int i;
     int found = False;
     for (i = 0; i < _storage->size; i++){
         if (strcmp(_storage->objects[i].key.val, obj->key.val) == 0){
-            strcpy(obj->value.val, _storage->objects[i].value.val);
-            obj->version = _storage->objects[i].version;
             found = True;
             break;
         }
@@ -105,6 +101,24 @@ int find_and_fill_object(storage_t * _storage, object_t * obj){
         i = -1;
     }
     return i;
+}
+
+int find_and_fill_object(storage_t * _storage, object_t * obj){
+    // TODO: Optimize from linear search to log(n)
+    int pos = find_object(_storage, obj);
+    if (pos != -1){
+        strcpy(obj->value.val, _storage->objects[pos].value.val);
+        obj->version = _storage->objects[pos].version;
+    }
+    return pos;
+}
+
+int find_and_delete_object(storage_t * _storage, object_t * obj){
+    int pos = find_object(_storage, obj);
+    if (pos != -1){
+        remove2(_storage, pos);
+    }
+    return pos;
 }
 
 void * put_obj(void * _obj_with_addr) {
@@ -142,9 +156,41 @@ void * put_obj(void * _obj_with_addr) {
     return ((void *)EXIT_SUCCESS);
 }
 
-int replicate_put(object_t * obj, addr_port_t target_location, message_type_e message_type){
-    LOG("REPLICATION");
+void * del_obj(void * _obj_with_addr){
+    LOG("DELETE");
+    object_with_addr_t * temp = _obj_with_addr;
+    object_t obj = temp->obj;
+    addr_port_t target_location = temp->addr_port;
+    message_type_e message = temp->message_type;
 
+    printf("Delete key and value: %s %s from %s %d, version, primary: %d %d\n",
+           obj.key.val, obj.value.val, target_location.addr, target_location.port,
+           obj.version, obj.primary);
+
+    int sock, rc;
+    rc = connect_to_peer(&sock, target_location);
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("OSD connected to another OSD");
+
+    rc = ssend(sock, &message, sizeof(message));
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("Send request for DELETE");
+
+    rc = ssend(sock, &obj, sizeof(obj));
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("Sent object for DELETE");
+
+    rc = srecv(sock, &message, sizeof(message));
+    VOID_RETURN_ON_FAILURE(rc)
+    printf("Response code for DELETE: %d\n", message);
+
+    send_bye(sock);
+    close(sock);
+
+    return ((void *)EXIT_SUCCESS);
+}
+
+int replicate_put(object_t * obj, addr_port_t target_location, message_type_e message_type){
     object_with_addr_t params = {
             .obj = *obj,
             .addr_port = target_location,
@@ -164,15 +210,32 @@ int replicate_put(object_t * obj, addr_port_t target_location, message_type_e me
 }
 
 int replicate_post(object_t * obj, addr_port_t target_location){
+    LOG("REPLICATE POST");
     return replicate_put(obj, target_location, POST_OBJECT);
 }
 
 int replicate_update(object_t * obj, addr_port_t target_location){
+    LOG("REPLICATE UPDATE");
     return replicate_put(obj, target_location, UPDATE_OBJECT);
 }
 
-int replicate_delete(object_t * obj){
-    LOG("NOT IMPLEMENTED replicate_delete");
+int replicate_delete(object_t * obj, addr_port_t target_location){
+    LOG("REPLICATE DELETE");
+    object_with_addr_t params = {
+            .obj = *obj,
+            .addr_port = target_location,
+            .message_type = DELETE_OBJECT,
+    };
+    pthread_t thread;
+    int rc;
+    rc = pthread_create(&thread, NULL, del_obj, &params);
+    if (rc != 0){
+        perror("Error creating thread");
+        return (EXIT_FAILURE);
+    }
+
+    // get rid of it?
+    pthread_join(thread, NULL);
     return (EXIT_SUCCESS);
 }
 
@@ -193,7 +256,7 @@ void replicate_for_multiple(crush_result_t * crush_res, object_t * obj,
                 replicate_update(obj, target_addr);
                 break;
             case DELETE_OBJECT:
-                replicate_delete(obj);
+                replicate_delete(obj, target_addr);
                 break;
             default:
                 break;
@@ -206,8 +269,7 @@ void replicate(object_t * obj, message_type_e operation){
     crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
                                         obj_hash(obj));
 
-    // actually found (active/alive) osd count might be less that expected replication
-    // factor
+    // actually found (active/alive) osd count might be less that expected replication factor
     replicate_for_multiple(res, obj, operation);
     clear_crush_result(&select_from);
     clear_crush_result(&res);
@@ -254,6 +316,32 @@ int save_object(object_t * obj, int update){
             obj->primary = 0;
             replicate(obj, update ? UPDATE_OBJECT : POST_OBJECT);
         }
+    }
+
+    return OP_SUCCESS;
+}
+
+int remove_object(object_t * obj){
+    storage_t * _storage = get_storage(obj->primary);
+
+    int pos = find_and_delete_object(_storage, obj);
+
+    if (pos == -1){
+        // Try to find object in alternative storage
+        _storage = get_storage(!obj->primary);
+        pos = find_and_delete_object(_storage, obj);
+        if (pos == -1) {
+            return NOT_FOUND;
+        }
+        printf("Object for delete is found, key: %s\n", obj->key.val);
+    }
+
+    if (obj->primary){
+        obj->primary = 0;
+        replicate(obj, DELETE_OBJECT);
+    }
+    else {
+        LOG("Storage is not primary, delete is not replicated");
     }
 
     return OP_SUCCESS;
@@ -318,7 +406,21 @@ int handle_update_object(int sock){
 }
 
 int handle_delete_object(int sock){
-    LOG("handle_delete_object NOT IMPLEMENTED");
+    LOG("Handling DELETE");
+    int rc;
+    object_t obj;
+    memset(&obj, 0, sizeof(obj));
+
+    rc = srecv(sock, &obj, sizeof(obj));
+    RETURN_ON_FAILURE(rc);
+    printf("Received key for DELETE object: %s\n", obj.key.val);
+
+    message_type_e response = remove_object(&obj);
+    rc = ssend(sock, &response, sizeof(response));
+    RETURN_ON_FAILURE(rc);
+    print_storage2(&primary_storage);
+    print_storage2(&secondary_storage);
+
     return (EXIT_SUCCESS);
 }
 

@@ -39,6 +39,7 @@ typedef enum message_type_e {
     OP_SUCCESS      = 8,
     OP_FAILURE      = 9,
     NEWER_VERSION_STORED = 10,
+    NOT_FOUND       = 11,
 } message_type_e;
 
 typedef struct socket_transfer_t {
