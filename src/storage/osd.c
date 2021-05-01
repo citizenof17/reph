@@ -12,6 +12,7 @@
 #include "src/util/object.h"
 #include "src/util/mysleep.h"
 #include "src/crush.h"
+#include "src/shortcuts.h"
 
 #define BETWEEN_PEER_PORT (10000)
 
@@ -44,6 +45,7 @@ net_config_t make_default_config(){
 typedef struct object_with_addr_t {
     object_t obj;
     addr_port_t addr_port;
+    message_type_e message_type;
 } object_with_addr_t;
 
 typedef struct config_transfer_t {
@@ -87,25 +89,33 @@ int handle_health_check(int sock){
 }
 
 int find_and_fill_object(storage_t * _storage, object_t * obj){
+    // TODO: Optimize from linear search to log(n)
+
     int i;
+    int found = False;
     for (i = 0; i < _storage->size; i++){
         if (strcmp(_storage->objects[i].key.val, obj->key.val) == 0){
             strcpy(obj->value.val, _storage->objects[i].value.val);
             obj->version = _storage->objects[i].version;
+            found = True;
             break;
         }
+    }
+    if (not found){
+        i = -1;
     }
     return i;
 }
 
-void * post_obj(void * _obj_with_addr) {
+void * put_obj(void * _obj_with_addr) {
     LOG("POST");
     object_with_addr_t * temp = _obj_with_addr;
     object_t obj = temp->obj;
     addr_port_t target_location = temp->addr_port;
+    message_type_e message = temp->message_type;
 
-    printf("Posting key and value: %s %s to %s %d, version, primary: %d %d\n",
-           obj.key.val, obj.value.val, target_location.addr, target_location.port,
+    printf("Post/put %d key and value: %s %s to %s %d, version, primary: %d %d\n",
+           message, obj.key.val, obj.value.val, target_location.addr, target_location.port,
            obj.version, obj.primary);
 
     int sock, rc;
@@ -114,7 +124,6 @@ void * post_obj(void * _obj_with_addr) {
 
     LOG("OSD connected to another OSD");
 
-    message_type_e message = POST_OBJECT;
     rc = ssend(sock, &message, sizeof(message));
     VOID_RETURN_ON_FAILURE(rc)
     LOG("Send request for POST");
@@ -133,16 +142,17 @@ void * post_obj(void * _obj_with_addr) {
     return ((void *)EXIT_SUCCESS);
 }
 
-int replicate_post(object_t * obj, addr_port_t target_location){
+int replicate_put(object_t * obj, addr_port_t target_location, message_type_e message_type){
     LOG("REPLICATION");
 
     object_with_addr_t params = {
             .obj = *obj,
             .addr_port = target_location,
+            .message_type = message_type,
     };
     pthread_t thread;
     int rc;
-    rc = pthread_create(&thread, NULL, post_obj, &params);
+    rc = pthread_create(&thread, NULL, put_obj, &params);
     if (rc != 0){
         perror("Error creating thread");
         return (EXIT_FAILURE);
@@ -151,6 +161,14 @@ int replicate_post(object_t * obj, addr_port_t target_location){
     // get rid of it?
     pthread_join(thread, NULL);
     return (EXIT_SUCCESS);
+}
+
+int replicate_post(object_t * obj, addr_port_t target_location){
+    return replicate_put(obj, target_location, POST_OBJECT);
+}
+
+int replicate_update(object_t * obj, addr_port_t target_location){
+    return replicate_put(obj, target_location, UPDATE_OBJECT);
 }
 
 int replicate_delete(object_t * obj){
@@ -170,6 +188,9 @@ void replicate_for_multiple(crush_result_t * crush_res, object_t * obj,
         switch (operation) {
             case POST_OBJECT:
                 replicate_post(obj, target_addr);
+                break;
+            case UPDATE_OBJECT:
+                replicate_update(obj, target_addr);
                 break;
             case DELETE_OBJECT:
                 replicate_delete(obj);
@@ -196,7 +217,7 @@ storage_t * get_storage(int primary){
     return primary ? &primary_storage : &secondary_storage;
 }
 
-int save_object(object_t * obj){
+int save_object(object_t * obj, int update){
     // very costly lookup, can be optimised with hash table?
     object_t old_obj;
     memset(&old_obj, 0, sizeof(object_t));
@@ -209,7 +230,8 @@ int save_object(object_t * obj){
     printf("Found old obj (pos, version, primary, key, val): %d %d %d %s %s\n",
            old_pos, old_obj.version, old_obj.primary, old_obj.key.val, old_obj.value.val);
 
-    if (old_obj.version >= obj->version){
+    if (old_obj.version >= obj->version and !update){  // TODO: shall I care about update here?
+        LOG("Newer version stored");
         return NEWER_VERSION_STORED;
     }
 //    else if (old_obj.version != 0){
@@ -221,11 +243,16 @@ int save_object(object_t * obj){
 //        return OP_SUCCESS;
 //    }
     else {
-        push2(_storage, obj, -1);
+        if (update and old_pos != -1){
+            push2(_storage, obj, old_pos);
+        }
+        else{
+            push2(_storage, obj, -1);
+        }
 
         if (obj->primary){
             obj->primary = 0;
-            replicate(obj, POST_OBJECT);
+            replicate(obj, update ? UPDATE_OBJECT : POST_OBJECT);
         }
     }
 
@@ -259,17 +286,20 @@ int handle_get_object(int sock){
     return (EXIT_SUCCESS);
 }
 
-int handle_post_object(int sock){
-    LOG("Handling POST");
+int handle_put_object(int sock, int update){
+    LOG("Handling POST/PUT");
+    printf("Operation %s\n", update ? "UPDATE" : "POST");
+
     int rc;
     object_t obj;
+    memset(&obj, 0, sizeof(obj));
 
     rc = srecv(sock, &obj, sizeof(obj));
     RETURN_ON_FAILURE(rc);
     printf("Received object: %s %s %d %d\n", obj.key.val, obj.value.val, obj.version,
            obj.primary);
 
-    message_type_e response = save_object(&obj);
+    message_type_e response = save_object(&obj, update);
     rc = ssend(sock, &response, sizeof(response));
     RETURN_ON_FAILURE(rc);
     print_storage2(&primary_storage);
@@ -278,9 +308,13 @@ int handle_post_object(int sock){
     return (EXIT_SUCCESS);
 }
 
+int handle_post_object(int sock){
+    return handle_put_object(sock, 0);
+}
+
 int handle_update_object(int sock){
-    LOG("handle_update_object NOT IMPLEMENTED");
-    return (EXIT_SUCCESS);
+/* This will work as PUT - create new object or update the old one */
+    return handle_put_object(sock, 1);
 }
 
 int handle_delete_object(int sock){
@@ -445,6 +479,18 @@ int in_crush(addr_port_t * addr_to_check, crush_result_t * crush_res){
     return 0;
 }
 
+int is_primary(crush_result_t * crush_res, addr_port_t * location){
+    if (crush_res->size > 0){
+        addr_port_t new_primary_location = crush_res->buckets[0]->device->location;
+        return addr_cmp(&new_primary_location, location) == 0;
+    }
+    return True;
+}
+
+int am_i_primary(crush_result_t * crush_result){
+    return is_primary(crush_result, &self_config);
+}
+
 void process_secondaries(){
     LOG("Processing secondaries");
     int i;
@@ -457,17 +503,16 @@ void process_secondaries(){
 
         if (res->size > 0){
             obj.primary = 1;
-            // Check if we are new primary
-            addr_port_t new_primary_location = res->buckets[0]->device->location;
-            if (addr_cmp(&new_primary_location, &self_config) == 0){
-                save_object(&obj);
+            if (am_i_primary(res)){
+                save_object(&obj, 0);
                 remove2(&secondary_storage, i);
                 continue;
             }
 
             // Check if primary of the group is changed and replicate data for it
-            // TODO: (actually check for primary change, as now we just unconditionally
-            //  sending data)
+            // TODO: actually check for primary change, as now we just unconditionally
+            //  sending data
+            addr_port_t new_primary_location = res->buckets[0]->device->location;
             replicate_post(&obj, new_primary_location);
         }
         // Check if we are still in the list of secondaries
@@ -496,8 +541,8 @@ void process_primaries(){
 
         if (res->size > 0){
             // Check if we are not a primary anymore and send object to a new primary
-            addr_port_t new_primary_location = res->buckets[0]->device->location;
-            if (addr_cmp(&new_primary_location, &self_config) != 0){
+            if (!am_i_primary(res)){
+                addr_port_t new_primary_location = res->buckets[0]->device->location;
                 replicate_post(&obj, new_primary_location);
                 remove2(&primary_storage, i);
                 continue;

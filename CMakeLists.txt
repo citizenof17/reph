@@ -20,7 +20,7 @@ set(UTIL_SOURCES
         src/util/netwrk.c
         src/util/object.c
         src/crush.c
-)
+        src/shortcuts.h)
 
 #set(TEST_SOURCES
 #        test_all.c
@@ -35,17 +35,17 @@ set(UTIL_SOURCES
 set(CLIENT_SOURCES
         src/client/client.c
         ${UTIL_SOURCES}
-        )
+        src/shortcuts.h)
 
 set(MONITOR_SOURCES
         src/monitor/monitor.c
         ${UTIL_SOURCES}
-        )
+        src/shortcuts.h)
 
 set(OSD_SOURCES
         src/storage/osd.c
         ${UTIL_SOURCES}
-        )
+        src/shortcuts.h)
 
 
 #add_executable(reph ${MAIN_SOURCES})

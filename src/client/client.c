@@ -147,8 +147,42 @@ void* get_obj(void * _obj) {
     return ((void *)EXIT_SUCCESS);
 }
 
+void* update_obj(void * _obj) {
+    LOG("UPDATE");
+    object_t * obj = _obj;
+    printf("Update key and value: %s %s\n", obj->key.val, obj->value.val);
+
+    addr_port_t target_location;
+    int rc = get_target_device_location(obj, &target_location);
+    printf("Target location: %s %d, found: %d\n", target_location.addr, target_location.port, !rc);
+    VOID_RETURN_ON_FAILURE(rc)
+
+    int sock;
+    rc = connect_to_peer(&sock, target_location);
+    VOID_RETURN_ON_FAILURE(rc)
+
+    LOG("Client connected to server");
+
+    message_type_e message = UPDATE_OBJECT;
+    rc = ssend(sock, &message, sizeof(message));
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("Send request for UPDATE");
+
+    rc = ssend(sock, obj, sizeof(*obj));
+    VOID_RETURN_ON_FAILURE(rc)
+    LOG("Sent UPDATE");
+
+    rc = srecv(sock, &message, sizeof(message));
+    VOID_RETURN_ON_FAILURE(rc)
+    printf("Response code for UPDATE: %d\n", message);
+
+    send_bye(sock);
+    close(sock);
+
+    return ((void *)EXIT_SUCCESS);
+}
+
 void delete_obj() {}
-void update_obj() {}
 
 int perform_post(){
     object_t obj;
@@ -188,7 +222,7 @@ object_key_t get_posted_key(){
 }
 
 int perform_get(){
-    LOG("Preforming GET");
+    LOG("Performing GET");
     if (storage.size == 0) {
         return (EXIT_SUCCESS);
     }
@@ -219,20 +253,69 @@ int perform_get(){
     return (EXIT_SUCCESS);
 }
 
+int perform_update(){
+    LOG("Performing UPDATE");
+    int try_post = rand() % 10 < 2;
+    if (try_post){
+        int put_res = perform_post();
+        printf("Update result: %d\n", put_res);
+        return put_res;
+    }
+
+    if (storage.size == 0) {
+        return (EXIT_SUCCESS);
+    }
+
+    object_t obj;
+    memset(&obj, 0, sizeof(object_t));
+
+    // Instead of get_posted_key()
+    int obj_pos = rand() % storage.size;
+    obj.key = storage.objects[obj_pos].key;
+    gen_random_string(obj.value.val, 15);
+    obj.version = cluster_map->version;
+    obj.primary = 1;
+
+    printf("UPDATE request for the following key: %s; new value: %s\n", obj.key.val, obj.value.val);
+
+    pthread_t thread;
+    int rc;
+    rc = pthread_create(&thread, NULL, update_obj, &obj);
+    if (rc != 0){
+        perror("Error creating thread");
+        return (EXIT_FAILURE);
+    }
+
+    void * thread_output;
+    pthread_join(thread, &thread_output);
+    if ((int *) thread_output == (EXIT_SUCCESS)) {
+        LOG("Update was successful");
+        push2(&storage, &obj, obj_pos);
+    }
+    return (EXIT_SUCCESS);
+}
+
 int perform_some_action(){
     message_type_e possible_operations[POSSIBLE_OPERATIONS_COUNT] =
-            {GET_OBJECT, POST_OBJECT, UPDATE_OBJECT, DELETE_OBJECT};
+            {POST_OBJECT, GET_OBJECT, UPDATE_OBJECT, DELETE_OBJECT};
 
 //    int action_number = rand() % POSSIBLE_OPERATIONS_COUNT;
 //    action_number = action_number % 2; // only post and get are supported atm
 
     int action_number = rand() % 10;
+    printf("Action number: %d\n", action_number);
 
     if (action_number < 5){
+        // POST is most preferable operation
         action_number = 0;
     }
-    else if (action_number < 10){
+    else if (action_number < 8){
+        // GET
         action_number = 1;
+    }
+    else if (action_number < 10){
+        // UPDATE
+        action_number = 2;
     }
 
     message_type_e action = possible_operations[action_number];
@@ -243,6 +326,9 @@ int perform_some_action(){
             break;
         case GET_OBJECT:
             perform_get();
+            break;
+        case UPDATE_OBJECT:
+            perform_update();
             break;
         default:
             LOG("Unsupported operation");

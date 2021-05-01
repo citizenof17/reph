@@ -7,6 +7,7 @@ from util import create_output_folder, OUTPUT_FOLDER, SOURCE_ROOT_PATH
 def main():
     """
         Build and run monitor + single client
+        Note that is path MUST be changed as its my local setup by default
     """
 
     build_cmd = ['/snap/clion/151/bin/cmake/linux/bin/cmake', '--build', '/home/pavel/reph/cmake-build-debug',
