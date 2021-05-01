@@ -70,10 +70,10 @@ crush_result_t * crush_select(crush_result_t * input, bucket_class_e t, int n, i
 
             bucket_t * output_bucket = NULL;
 
-            int retry_descent = 0;
+            int retry_descent;
             do {
                 bucket_t * bucket = input->buckets[i];
-                int retry_bucket = 0;
+                int retry_bucket;
 
                 do {
                     retry_bucket = 0;

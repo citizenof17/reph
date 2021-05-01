@@ -223,9 +223,17 @@ int perform_some_action(){
     message_type_e possible_operations[POSSIBLE_OPERATIONS_COUNT] =
             {GET_OBJECT, POST_OBJECT, UPDATE_OBJECT, DELETE_OBJECT};
 
-    int action_number = rand() % POSSIBLE_OPERATIONS_COUNT;
+//    int action_number = rand() % POSSIBLE_OPERATIONS_COUNT;
+//    action_number = action_number % 2; // only post and get are supported atm
 
-    action_number = action_number % 2; // only post and get are supported atm
+    int action_number = rand() % 10;
+
+    if (action_number < 5){
+        action_number = 0;
+    }
+    else if (action_number < 10){
+        action_number = 1;
+    }
 
     message_type_e action = possible_operations[action_number];
 

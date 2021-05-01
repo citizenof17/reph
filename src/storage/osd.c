@@ -82,7 +82,7 @@ int handle_health_check(int sock){
     int rc = 1;
     rc = ssend(sock, &rc, sizeof(rc));  // just send some random stuff
     RETURN_ON_FAILURE(rc);
-    LOG("Send health check response");
+//    LOG("Send health check response");
     return (EXIT_SUCCESS);
 }
 
@@ -325,7 +325,7 @@ void * handle_client_or_monitor(void * arg){
                 VOID_RETURN_ON_FAILURE(rc);
                 break;
             case BYE:
-                LOG("End of chat, bye");
+//                LOG("End of chat, bye");
                 break;
             default:
                 LOG("Unprocessable message type");

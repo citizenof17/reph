@@ -1,16 +1,13 @@
+#!/usr/bin/python3
+
 import subprocess
-import os
 import sys
 
+from util import create_output_folder, OUTPUT_FOLDER, SOURCE_ROOT_PATH
 
-output_folder = 'captured_output'
+
 default_port = 4242
 total_osd_count = 5
-
-
-def create_output_folder(folder_name=output_folder):
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
 
 
 def get_osd_count_from_cmdline():
@@ -23,10 +20,12 @@ def main():
     create_output_folder()
     osd_count = get_osd_count_from_cmdline() or total_osd_count
     osd_ports = [str(default_port + i) for i in range(osd_count)]
-    filename_pattern = f'{output_folder}/{{}}.txt'
+    filename_pattern = f'{OUTPUT_FOLDER}/{{}}.txt'
     files = [open(filename_pattern.format(osd_port), 'w') for osd_port in osd_ports]
+    base_path = f'{SOURCE_ROOT_PATH}/cmake-build-debug/{{}}'
+
     for i, osd_port in enumerate(osd_ports):
-        subprocess.Popen('cmake-build-debug/osd -p {}'.format(osd_port),
+        subprocess.Popen(base_path.format('osd -p {}'.format(osd_port)),
                          shell=True, stdout=files[i], stderr=files[i])
         print('Started {}'.format(osd_port))
 
