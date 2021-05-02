@@ -348,7 +348,7 @@ int perform_delete(){
         return (EXIT_SUCCESS);
     }
 
-    printf("DELETE request for the following key: %s\n", key.val);
+    printf("++++++DELETE request for the following key: %s++++++\n", key.val);
 
     pthread_t thread;
     int rc;

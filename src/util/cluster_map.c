@@ -70,10 +70,10 @@ map_entry_t make_map_entry_from_string(char * map_string){
     return gen_dummy_map();
 }
 
-char * get_string_map_representation(FILE * fin){
-    char * string_map = parse_json_to_string(fin);
-    return string_map;
-}
+//char * get_string_map_representation(FILE * fin){
+//    char * string_map = parse_json_to_string(fin);
+//    return string_map;
+//}
 
 cluster_map_t * build_map(map_entry_t map_entry) {
     cluster_map_t * cluster_map = (cluster_map_t *)malloc(sizeof(cluster_map_t));
@@ -82,17 +82,17 @@ cluster_map_t * build_map(map_entry_t map_entry) {
     return cluster_map;
 }
 
-cluster_map_t * build_map_from_file(FILE * fin){
-    char * string_map = get_string_map_representation(fin);
-    map_entry_t map_entry = make_map_entry_from_string(string_map);
-    return build_map(map_entry);
-}
-
-cluster_map_t * build_map_from_string(char * plane_map){
-    map_entry_t map_entry = make_map_entry_from_string(plane_map);
-    cluster_map_t * cl = build_map(map_entry);
-    return cl;
-}
+//cluster_map_t * build_map_from_file(FILE * fin){
+//    char * string_map = get_string_map_representation(fin);
+//    map_entry_t map_entry = make_map_entry_from_string(string_map);
+//    return build_map(map_entry);
+//}
+//
+//cluster_map_t * build_map_from_string(char * plane_map){
+//    map_entry_t map_entry = make_map_entry_from_string(plane_map);
+//    cluster_map_t * cl = build_map(map_entry);
+//    return cl;
+//}
 
 cluster_map_t * build_default_map(){
     map_entry_t map_entry = gen_dummy_map();
@@ -495,7 +495,9 @@ void remove_special_chars(char * str){
 }
 
 cluster_map_t * cluster_map_from_string(char * str){
+    printf("CM %s\n", str);
     remove_special_chars(str);
+    printf("CM %s\n", str);
 
     cluster_map_t * cluster_map = malloc(sizeof(cluster_map_t));
     cluster_map->root = malloc(sizeof(bucket_t));
@@ -511,7 +513,8 @@ cluster_map_t * cluster_map_from_file(char * filepath){
     fp = fopen(filepath, "r");
 
     char buf[DEFAULT_MAP_SIZE];
-    fscanf(fp, "%s", buf);
+    fgets(buf, DEFAULT_MAP_SIZE, fp);
+    fclose(fp);
     return cluster_map_from_string(buf);
 }
 

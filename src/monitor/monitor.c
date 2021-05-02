@@ -63,7 +63,7 @@ void * handle_client(void * arg){
         message_type = BYE;
         rc = srecv(sock, &message_type, sizeof(message_type));
         VOID_RETURN_ON_FAILURE(rc);
-        printf("Received message %d \n", message_type);
+//        printf("Received message %d \n", message_type);
 
         switch(message_type){
             case GET_MAP_VERSION:
@@ -192,15 +192,15 @@ int poll_osd(device_t * device){
         device->state = alive ? UP : DOWN;
     }
 
-    printf("Health check to %s %d, device state is %d\n", device->location.addr,
-           device->location.port, device->state);
+//    printf("Health check to %s %d, device state is %d\n", device->location.addr,
+//           device->location.port, device->state);
 
     return old_state != device->state;
 }
 
 int dfs_check_devices(bucket_t * bucket){
     int state_changed = 0;
-    printf("Bucket is: %d %d\n", bucket->class, bucket->type);
+//    printf("Bucket is: %d %d\n", bucket->class, bucket->type);
     if (bucket->class == DEVICE){
         state_changed |= poll_osd(bucket->device);
     }
@@ -253,8 +253,8 @@ int main(int argc, char ** argv){
     init_config_from_input(&config, argc, argv);
 
     // TODO: Read map filepath from input
-    // cluster_map = cluster_map_from_file("../../sample_cluster.txt");
-    cluster_map = build_default_map();
+    cluster_map = cluster_map_from_file("/home/pavel/reph/sample_cluster.txt");
+//    cluster_map = build_default_map();
     plane_cluster_map = cluster_map_to_string(cluster_map);
     print_cluster_map(cluster_map);
 

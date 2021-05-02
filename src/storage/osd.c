@@ -436,7 +436,7 @@ void * handle_client_or_monitor(void * arg){
         rc = srecv(sock, &message_type, sizeof(message_type));
         VOID_RETURN_ON_FAILURE(rc);
 
-        fprintf(stdout, "Received message %d \n", message_type);
+//        fprintf(stdout, "Received message %d \n", message_type);
         fflush(NULL);
 
         switch(message_type){
