@@ -132,12 +132,10 @@ int start_client_handler(addr_port_t config, pthread_t * client_handler_thread) 
 
     if (rc != 0) {
         perror("Error creating thread");
-        close(sock);
         return (EXIT_FAILURE);
     }
 
     pthread_mutex_lock(&params.mutex);
-
     return (EXIT_SUCCESS);
 }
 
@@ -191,7 +189,6 @@ int poll_osd(device_t * device){
         int alive = send_health_check(sock);
         device->state = alive ? UP : DOWN;
     }
-
 //    printf("Health check to %s %d, device state is %d\n", device->location.addr,
 //           device->location.port, device->state);
 

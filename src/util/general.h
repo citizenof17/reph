@@ -9,7 +9,7 @@
 #include "src/inner_storage/map_interface.h"
 
 #define RETURN_ON_FAILURE(i) if ((i) != (EXIT_SUCCESS)) { return (i); }
-#define VOID_RETURN_ON_FAILURE(i) if ((i) != (EXIT_SUCCESS)) { return (void *)(size_t)(i); }
+#define VOID_RETURN_ON_FAILURE(i) if ((i) != (EXIT_SUCCESS)) { return (void *)(EXIT_FAILURE); }
 
 typedef struct storage_linear_t {
     object_t objects[100];
@@ -30,6 +30,7 @@ void remove_linear(storage_linear_t * storage, int pos);
 void print_storage(storage_t * storage);
 void push(storage_t * storage, object_t * obj);
 void get(storage_t * storage, object_t * obj);
+void list(storage_t * storage, object_t ** objects);
 void update(storage_t * storage, object_t * obj);
 void remove2(storage_t * storage, object_t * obj);
 int size(storage_t * storage);

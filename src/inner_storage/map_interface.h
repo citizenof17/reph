@@ -10,6 +10,7 @@ typedef struct map_t {
     void (*get) (struct map_t *, object_t *);
     void (*remove) (struct map_t *, object_t *);
     void (*print) (struct map_t *);
+    void (*list) (struct map_t *, object_t **);
     int (*size) (struct map_t *);
     void *impl;
 } map_t;

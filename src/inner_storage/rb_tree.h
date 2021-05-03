@@ -35,6 +35,7 @@ void erase(Tree *T, object_t * object);
 void clearTree(Tree *T, Node *t);
 void deleteTree(Tree *T);
 void printTree(Node *q, long n);
+void listTree(Tree *T, object_t ** objects);
 //int  contains(Tree *T, Node* x, char *key);
 int  getValue(Tree *T, object_t * object);
 

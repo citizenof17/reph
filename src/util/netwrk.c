@@ -29,7 +29,7 @@ int send_bye(int sock){
     RETURN_ON_FAILURE(rc);
 
     LOG("Send bye");
-
+    close(sock);
     return (EXIT_SUCCESS);
 }
 

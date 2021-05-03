@@ -385,9 +385,9 @@ int perform_some_action(){
     printf("Action number: %d\n", action_number);
 
     // TODO: Change priorities
-    if      (action_number < 3) { action_number = 0; }  // POST - most preferable operation
-    else if (action_number < 5) { action_number = 1; }  // GET
-    else if (action_number < 7) { action_number = 2; }  // UPDATE
+    if      (action_number < 4) { action_number = 0; }  // POST - most preferable operation
+    else if (action_number < 6) { action_number = 1; }  // GET
+    else if (action_number < 8) { action_number = 2; }  // UPDATE
     else if (action_number < 10){ action_number = 3; }  // DELETE
 
     message_type_e action = possible_operations[action_number];

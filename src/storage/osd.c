@@ -329,13 +329,13 @@ int remove_object(object_t * obj){
     storage_t * _storage = get_storage(obj->primary);
 
     remove2(_storage, obj);
-//    int pos = find_and_delete_object(_storage, obj);
 
     if (obj->version == 0){
         // Try to find object in alternative storage
         _storage = get_storage(!obj->primary);
         remove2(_storage, obj);
         if (obj->version == 0) {
+            printf("Object for delete NOT found, key: %s\n", obj->key.val);
             return NOT_FOUND;
         }
         printf("Object for delete is found, key: %s\n", obj->key.val);
@@ -599,76 +599,88 @@ int am_i_primary(crush_result_t * crush_result){
 }
 
 void process_secondaries(){
-//    LOG("Processing secondaries");
-//    int i;
-//    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
-//    for (i = 0; i < secondary_storage.size;){
-//        object_t obj = secondary_storage.objects[i];
-//
-//        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
-//                                            obj_hash(&obj));
-//
-//        if (res->size > 0){
-//            obj.primary = 1;
-//            if (am_i_primary(res)){
-//                save_object(&obj, 0);
-//                remove2(&secondary_storage, i);
-//                continue;
-//            }
-//
-//            // Check if primary of the group is changed and replicate data for it
-//            // TODO: actually check for primary change, as now we just unconditionally
-//            //  sending data
-//            addr_port_t new_primary_location = res->buckets[0]->device->location;
-//            replicate_post(&obj, new_primary_location);
-//        }
-//        // Check if we are still in the list of secondaries
-//        if (!in_crush(&self_config, res)){
-//            remove2(&secondary_storage, i);
-//            continue;
-//        }
-//        clear_crush_result(&res);
-//        i++;
-//    }
-//    clear_crush_result(&select_from);
+    LOG("Processing secondaries");
+    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+
+    int sz = size(&secondary_storage);
+    object_t ** objects = malloc(sizeof(object_t *) * sz);
+
+    list(&secondary_storage, objects);
+
+    int i;
+    for (i = 0; i < sz; i++){
+        object_t obj = *objects[i];
+
+        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+                                            obj_hash(&obj));
+
+        if (res->size > 0){
+            obj.primary = 1;
+            if (am_i_primary(res)){
+                save_object(&obj, 0);
+                remove2(&secondary_storage, &obj);
+                continue;
+            }
+
+            // Check if primary of the group is changed and replicate data for it
+            // TODO: actually check for primary change, as now we just unconditionally
+            //  sending data
+            addr_port_t new_primary_location = res->buckets[0]->device->location;
+            replicate_post(&obj, new_primary_location);
+        }
+        // Check if we are still in the list of secondaries
+        if (!in_crush(&self_config, res)){
+            remove2(&secondary_storage, &obj);
+            continue;
+        }
+        clear_crush_result(&res);
+    }
+    free(objects);
+    clear_crush_result(&select_from);
 }
 
 void process_primaries(){
-//    LOG("Processing primaries");
-//
-//    // find new primary/secondaries for the object. If we are not primary anymore,
-//    // send object to a new primary.
-//    int i;
-//    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
-//    for (i = 0; i < primary_storage.size;){
-//        object_t obj = primary_storage.objects[i];
-//
-//        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
-//                                            obj_hash(&obj));
-//
-//        if (res->size > 0){
-//            // Check if we are not a primary anymore and send object to a new primary
-//            if (!am_i_primary(res)){
-//                addr_port_t new_primary_location = res->buckets[0]->device->location;
-//                replicate_post(&obj, new_primary_location);
-//                remove2(&primary_storage, i);
-//                continue;
-//            }
-//        }
-//
-//        if (res->size == 0){
-//            remove2(&primary_storage, i);
-//            continue;
-//        }
-//
-//        // We are good. Still a primary, let's replicate to secondaries as they might've
-//        // changed
-//        obj.primary = 0;
-//        replicate_for_multiple(res, &obj, POST_OBJECT);
-//        clear_crush_result(&res);
-//        i++;
-//    }
-//    clear_crush_result(&select_from);
+    LOG("Processing primaries");
+
+    // find new primary/secondaries for the object. If we are not primary anymore,
+    // send object to a new primary.
+    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+
+    int sz = size(&primary_storage);
+    object_t ** objects = malloc(sizeof(object_t *) * sz);
+
+    list(&primary_storage, objects);
+
+    int i;
+    for (i = 0; i < sz; i++){
+        object_t obj = *objects[i];
+
+        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+                                            obj_hash(&obj));
+
+        if (res->size > 0){
+            // Check if we are not a primary anymore and send object to a new primary
+            if (!am_i_primary(res)){
+                addr_port_t new_primary_location = res->buckets[0]->device->location;
+                replicate_post(&obj, new_primary_location);
+                remove2(&primary_storage, &obj);
+                continue;
+            }
+        }
+
+        if (res->size == 0){
+            remove2(&primary_storage, &obj);
+            continue;
+        }
+
+        // We are good. Still a primary, let's replicate to secondaries as they might've
+        // changed
+        obj.primary = 0;
+        replicate_for_multiple(res, &obj, POST_OBJECT);
+        clear_crush_result(&res);
+    }
+    clear_crush_result(&select_from);
+    free(objects);
 }
 
 _Noreturn void * perform_recovery(void * arg){

@@ -105,6 +105,10 @@ int size(storage_t * storage){
     return storage->size(storage);
 }
 
+void list(storage_t * storage, object_t ** objects){
+    storage->list(storage, objects);
+}
+
 void print_storage(storage_t * storage){
     printf("------------------\n");
     printf("Storage size: %d\n", size(storage));

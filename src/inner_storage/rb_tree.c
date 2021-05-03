@@ -306,6 +306,7 @@ void erase(Tree *T, object_t *object) {
 
 //        free(z->key);
 //        free(z->value);
+        object->version = z->object->version;
         free(z->object);
         free(z);
         T->size--;
@@ -366,4 +367,21 @@ int getValue(Tree *T, object_t * object) { //return null if not exists?
     object->version = t->object->version;
     object->primary = t->object->primary;
     return 0;
+}
+
+int listTreeRecursive(Tree * T, Node * nd, object_t ** objects){
+    if (nd == T->nil){
+        return 0;
+    }
+
+    // pos is the first free place
+    int objects_count = listTreeRecursive(T, nd->left, objects);
+    objects[objects_count] = nd->object;
+    objects_count += listTreeRecursive(T, nd->right, &(objects[objects_count + 1]));
+    return objects_count + 1;
+}
+
+void listTree(Tree * T, object_t ** objects){
+    // Assume objects has enough space
+    listTreeRecursive(T, T->root, objects);
 }

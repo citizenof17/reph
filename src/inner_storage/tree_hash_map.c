@@ -44,6 +44,11 @@ static void rem(map_t * map, object_t * object){
 //    pthread_rwlock_unlock(&impl->rwlock[index]);
 }
 
+static void list(map_t * map, object_t ** objects){
+    PREPARE_IMPL(map)
+    listTree(impl->tree, objects);
+}
+
 static int get_size(map_t * map){
     PREPARE_IMPL(map)
 
@@ -63,6 +68,7 @@ void tree_hash_map_init(map_t * map){
     map->push = &push;
     map->get = &get;
     map->remove = &rem;
+    map->list = &list;
     map->print = &tree_hash_map_print;
     map->size = &get_size;
 }
@@ -80,6 +86,18 @@ void tree_hash_map_free(map_t *map){
 // debugging printing
 void tree_hash_map_print(map_t *map){
     PREPARE_IMPL(map);
-    printTree(impl->tree->root, 3);
-    puts("\n\n");
+//    printTree(impl->tree->root, 3);
+
+    int sz = get_size(map);
+    object_t ** objects = malloc(sizeof(object_t *) * sz);
+
+    list(map, objects);
+
+    int i;
+    for (i = 0; i < sz; i++){
+        printf("%s, %s, version: %d, primary: %d\n",
+               objects[i]->key.val, objects[i]->value.val,
+               objects[i]->version, objects[i]->primary);
+    }
+    free(objects);
 }
