@@ -18,9 +18,12 @@ set(UTIL_SOURCES
         src/util/log.c
         src/util/mysleep.c
         src/util/netwrk.c
-        src/util/object.c
         src/crush.c
         src/shortcuts.h)
+
+set(INNER_STORAGE_SOURCES
+        src/inner_storage/rb_tree.c
+        src/inner_storage/tree_hash_map.c)
 
 #set(TEST_SOURCES
 #        test_all.c
@@ -45,6 +48,7 @@ set(MONITOR_SOURCES
 set(OSD_SOURCES
         src/storage/osd.c
         ${UTIL_SOURCES}
+        ${INNER_STORAGE_SOURCES}
         src/shortcuts.h)
 
 

@@ -9,7 +9,9 @@
 #include "src/util/cluster_map.h"
 #include "src/util/netwrk.h"
 #include "src/util/general.h"
-#include "src/util/object.h"
+#include "src/inner_storage/object.h"
+#include "src/inner_storage/map_interface.h"
+#include "src/inner_storage/tree_hash_map.h"
 #include "src/util/mysleep.h"
 #include "src/crush.h"
 #include "src/shortcuts.h"
@@ -89,36 +91,39 @@ int handle_health_check(int sock){
 }
 
 int find_object(storage_t * _storage, object_t * obj){
-    int i;
-    int found = False;
-    for (i = 0; i < _storage->size; i++){
-        if (strcmp(_storage->objects[i].key.val, obj->key.val) == 0){
-            found = True;
-            break;
-        }
-    }
-    if (not found){
-        i = -1;
-    }
-    return i;
+//    int i;
+//    int found = False;
+//    for (i = 0; i < _storage->size; i++){
+//        if (strcmp(_storage->objects[i].key.val, obj->key.val) == 0){
+//            found = True;
+//            break;
+//        }
+//    }
+//    if (not found){
+//        i = -1;
+//    }
+//    return i;
+    return -1;
 }
 
 int find_and_fill_object(storage_t * _storage, object_t * obj){
-    // TODO: Optimize from linear search to log(n)
-    int pos = find_object(_storage, obj);
-    if (pos != -1){
-        strcpy(obj->value.val, _storage->objects[pos].value.val);
-        obj->version = _storage->objects[pos].version;
-    }
-    return pos;
+//    // TODO: Optimize from linear search to log(n)
+//    int pos = find_object(_storage, obj);
+//    if (pos != -1){
+//        strcpy(obj->value.val, _storage->objects[pos].value.val);
+//        obj->version = _storage->objects[pos].version;
+//    }
+//    return pos;
+    return -1;
 }
 
 int find_and_delete_object(storage_t * _storage, object_t * obj){
-    int pos = find_object(_storage, obj);
-    if (pos != -1){
-        remove2(_storage, pos);
-    }
-    return pos;
+//    int pos = find_object(_storage, obj);
+//    if (pos != -1){
+//        remove2(_storage, pos);
+//    }
+//    return pos;
+    return -1;
 }
 
 void * put_obj(void * _obj_with_addr) {
@@ -279,42 +284,41 @@ storage_t * get_storage(int primary){
     return primary ? &primary_storage : &secondary_storage;
 }
 
-int save_object(object_t * obj, int update){
-    // very costly lookup, can be optimised with hash table?
+int save_object(object_t * obj, int update_needed){
     object_t old_obj;
     memset(&old_obj, 0, sizeof(object_t));
     strcpy(old_obj.key.val, obj->key.val);
 
     storage_t * _storage = get_storage(obj->primary);
 
-    int old_pos = find_and_fill_object(_storage, &old_obj);
+    get(_storage, &old_obj);
 
-    printf("Found old obj (pos, version, primary, key, val): %d %d %d %s %s\n",
-           old_pos, old_obj.version, old_obj.primary, old_obj.key.val, old_obj.value.val);
+    printf("Found old obj (version, primary, key, val): %d %d %s %s\n",
+           old_obj.version, old_obj.primary, old_obj.key.val, old_obj.value.val);
 
-    if (old_obj.version >= obj->version and !update){  // TODO: shall I care about update here?
+    if (old_obj.version >= obj->version and !update_needed){  // TODO: shall I care about update here?
         LOG("Newer version stored");
         return NEWER_VERSION_STORED;
     }
-//    else if (old_obj.version != 0){
-//        if (strcmp(old_obj.value.val, obj->value.val) == 0){
-//            // It's already store and replication is not needed
-//            return OP_SUCCESS;
-//        }
-//        update2(_storage, old_pos, obj);
-//        return OP_SUCCESS;
-//    }
+    else if (old_obj.version != 0){
+        if (strcmp(old_obj.value.val, obj->value.val) == 0){
+            // It's already store and replication is not needed
+            return OP_SUCCESS;
+        }
+        update(_storage, obj);
+        return OP_SUCCESS;
+    }
     else {
-        if (update and old_pos != -1){
-            push2(_storage, obj, old_pos);
-        }
-        else{
-            push2(_storage, obj, -1);
-        }
+//        if (update and old_pos != -1){
+            push(_storage, obj);
+//        }
+//        else{
+//            push(_storage, obj);
+//        }
 
         if (obj->primary){
             obj->primary = 0;
-            replicate(obj, update ? UPDATE_OBJECT : POST_OBJECT);
+            replicate(obj, update_needed ? UPDATE_OBJECT : POST_OBJECT);
         }
     }
 
@@ -324,13 +328,14 @@ int save_object(object_t * obj, int update){
 int remove_object(object_t * obj){
     storage_t * _storage = get_storage(obj->primary);
 
-    int pos = find_and_delete_object(_storage, obj);
+    remove2(_storage, obj);
+//    int pos = find_and_delete_object(_storage, obj);
 
-    if (pos == -1){
+    if (obj->version == 0){
         // Try to find object in alternative storage
         _storage = get_storage(!obj->primary);
-        pos = find_and_delete_object(_storage, obj);
-        if (pos == -1) {
+        remove2(_storage, obj);
+        if (obj->version == 0) {
             return NOT_FOUND;
         }
         printf("Object for delete is found, key: %s\n", obj->key.val);
@@ -359,11 +364,11 @@ int handle_get_object(int sock){
 
     // Look in primary_storage first
     obj.primary = 1;
-    find_and_fill_object(get_storage(obj.primary), &obj);
+    get(get_storage(obj.primary), &obj);
     if (obj.version == 0){
         // Object was not found in the expected storage, try to find it in another one
         // This might happen when current OSD is secondary
-        find_and_fill_object(get_storage(!obj.primary), &obj);
+        get(get_storage(!obj.primary), &obj);
     }
 
     printf("Found object for GET: %s %s\n", obj.key.val, obj.value.val);
@@ -390,8 +395,8 @@ int handle_put_object(int sock, int update){
     message_type_e response = save_object(&obj, update);
     rc = ssend(sock, &response, sizeof(response));
     RETURN_ON_FAILURE(rc);
-    print_storage2(&primary_storage);
-    print_storage2(&secondary_storage);
+    print_storage(&primary_storage);
+    print_storage(&secondary_storage);
 
     return (EXIT_SUCCESS);
 }
@@ -418,8 +423,8 @@ int handle_delete_object(int sock){
     message_type_e response = remove_object(&obj);
     rc = ssend(sock, &response, sizeof(response));
     RETURN_ON_FAILURE(rc);
-    print_storage2(&primary_storage);
-    print_storage2(&secondary_storage);
+    print_storage(&primary_storage);
+    print_storage(&secondary_storage);
 
     return (EXIT_SUCCESS);
 }
@@ -594,76 +599,76 @@ int am_i_primary(crush_result_t * crush_result){
 }
 
 void process_secondaries(){
-    LOG("Processing secondaries");
-    int i;
-    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
-    for (i = 0; i < secondary_storage.size;){
-        object_t obj = secondary_storage.objects[i];
-
-        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
-                                            obj_hash(&obj));
-
-        if (res->size > 0){
-            obj.primary = 1;
-            if (am_i_primary(res)){
-                save_object(&obj, 0);
-                remove2(&secondary_storage, i);
-                continue;
-            }
-
-            // Check if primary of the group is changed and replicate data for it
-            // TODO: actually check for primary change, as now we just unconditionally
-            //  sending data
-            addr_port_t new_primary_location = res->buckets[0]->device->location;
-            replicate_post(&obj, new_primary_location);
-        }
-        // Check if we are still in the list of secondaries
-        if (!in_crush(&self_config, res)){
-            remove2(&secondary_storage, i);
-            continue;
-        }
-        clear_crush_result(&res);
-        i++;
-    }
-    clear_crush_result(&select_from);
+//    LOG("Processing secondaries");
+//    int i;
+//    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+//    for (i = 0; i < secondary_storage.size;){
+//        object_t obj = secondary_storage.objects[i];
+//
+//        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+//                                            obj_hash(&obj));
+//
+//        if (res->size > 0){
+//            obj.primary = 1;
+//            if (am_i_primary(res)){
+//                save_object(&obj, 0);
+//                remove2(&secondary_storage, i);
+//                continue;
+//            }
+//
+//            // Check if primary of the group is changed and replicate data for it
+//            // TODO: actually check for primary change, as now we just unconditionally
+//            //  sending data
+//            addr_port_t new_primary_location = res->buckets[0]->device->location;
+//            replicate_post(&obj, new_primary_location);
+//        }
+//        // Check if we are still in the list of secondaries
+//        if (!in_crush(&self_config, res)){
+//            remove2(&secondary_storage, i);
+//            continue;
+//        }
+//        clear_crush_result(&res);
+//        i++;
+//    }
+//    clear_crush_result(&select_from);
 }
 
 void process_primaries(){
-    LOG("Processing primaries");
-
-    // find new primary/secondaries for the object. If we are not primary anymore,
-    // send object to a new primary.
-    int i;
-    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
-    for (i = 0; i < primary_storage.size;){
-        object_t obj = primary_storage.objects[i];
-
-        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
-                                            obj_hash(&obj));
-
-        if (res->size > 0){
-            // Check if we are not a primary anymore and send object to a new primary
-            if (!am_i_primary(res)){
-                addr_port_t new_primary_location = res->buckets[0]->device->location;
-                replicate_post(&obj, new_primary_location);
-                remove2(&primary_storage, i);
-                continue;
-            }
-        }
-
-        if (res->size == 0){
-            remove2(&primary_storage, i);
-            continue;
-        }
-
-        // We are good. Still a primary, let's replicate to secondaries as they might've
-        // changed
-        obj.primary = 0;
-        replicate_for_multiple(res, &obj, POST_OBJECT);
-        clear_crush_result(&res);
-        i++;
-    }
-    clear_crush_result(&select_from);
+//    LOG("Processing primaries");
+//
+//    // find new primary/secondaries for the object. If we are not primary anymore,
+//    // send object to a new primary.
+//    int i;
+//    crush_result_t * select_from = init_crush_input(1, cluster_map->root);
+//    for (i = 0; i < primary_storage.size;){
+//        object_t obj = primary_storage.objects[i];
+//
+//        crush_result_t * res = crush_select(select_from, DEVICE, replicas_factor,
+//                                            obj_hash(&obj));
+//
+//        if (res->size > 0){
+//            // Check if we are not a primary anymore and send object to a new primary
+//            if (!am_i_primary(res)){
+//                addr_port_t new_primary_location = res->buckets[0]->device->location;
+//                replicate_post(&obj, new_primary_location);
+//                remove2(&primary_storage, i);
+//                continue;
+//            }
+//        }
+//
+//        if (res->size == 0){
+//            remove2(&primary_storage, i);
+//            continue;
+//        }
+//
+//        // We are good. Still a primary, let's replicate to secondaries as they might've
+//        // changed
+//        obj.primary = 0;
+//        replicate_for_multiple(res, &obj, POST_OBJECT);
+//        clear_crush_result(&res);
+//        i++;
+//    }
+//    clear_crush_result(&select_from);
 }
 
 _Noreturn void * perform_recovery(void * arg){
@@ -697,8 +702,8 @@ _Noreturn void * perform_recovery(void * arg){
             pthread_mutex_lock(&recovery_mutex);
             recovery_needed = 0;
             pthread_mutex_unlock(&recovery_mutex);
-            print_storage2(&primary_storage);
-            print_storage2(&secondary_storage);
+            print_storage(&primary_storage);
+            print_storage(&secondary_storage);
         }
 
         mysleep(5000);
@@ -763,9 +768,9 @@ int run(net_config_t config){
 
 void intHandler(int smt){
     printf("Primary storage:\n");
-    print_storage2(&primary_storage);
+    print_storage(&primary_storage);
     printf("Secondary storage:\n");
-    print_storage2(&secondary_storage);
+    print_storage(&secondary_storage);
     printf("Error code %d\n", smt);
     fflush(NULL);
     exit(1);
@@ -776,8 +781,11 @@ int main(int argc, char ** argv){
     signal(SIGINT, intHandler);
     signal(SIGTERM, intHandler);
 
-    primary_storage.size = 0;
-    secondary_storage.size = 0;
+//    primary_storage.size = 0;
+//    secondary_storage.size = 0;
+
+    tree_hash_map_init(&primary_storage);
+    tree_hash_map_init(&secondary_storage);
 
     recovery_needed = 0;
     pthread_mutex_init(&recovery_mutex, NULL);

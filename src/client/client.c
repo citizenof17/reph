@@ -3,7 +3,6 @@
 //
 
 #include <stdio.h>
-#include <ctype.h>
 #include <getopt.h>
 #include <string.h>
 #include <stdlib.h>
@@ -11,7 +10,7 @@
 #include <signal.h>
 #include "src/util/general.h"
 #include "src/util/cluster_map.h"
-#include "src/util/object.h"
+#include "src/inner_storage/object.h"
 #include "src/crush.h"
 #include "src/util/log.h"
 #include "src/util/netwrk.h"
@@ -21,7 +20,7 @@
 
 cluster_map_t * cluster_map;
 
-storage_t storage;
+storage_linear_t storage;
 
 int init_config_from_input(net_config_t * config, int argc, char ** argv) {
     int c;
@@ -247,7 +246,7 @@ int perform_post(){
     pthread_join(thread, &thread_output);
     if ((int *) thread_output == (EXIT_SUCCESS)) {
         LOG("Post was successful, adding it to local storage");
-        push2(&storage, &obj, -1);
+        push_linear(&storage, &obj, -1);
     }
     return (EXIT_SUCCESS);
 }
@@ -326,13 +325,13 @@ int perform_update(){
     pthread_join(thread, &thread_output);
     if ((int *) thread_output == (EXIT_SUCCESS)) {
         LOG("Update was successful");
-        push2(&storage, &obj, obj_pos);
+        push_linear(&storage, &obj, obj_pos);
     }
     return (EXIT_SUCCESS);
 }
 
 int perform_delete(){
-    // TODO: delete object from local stora. Leaving it as it for not to also test GET for a removed
+    // TODO: delete object from local storage. Leaving it as it to also test GET for a removed
     //  object
     LOG("Performing DELETE");
     object_key_t key;
@@ -427,7 +426,7 @@ int run(net_config_t config){
 
 
 void intHandler(int smt){
-    print_storage2(&storage);
+    print_storage_linear(&storage);
     printf("Error code %d\n", smt);
     exit(1);
 }

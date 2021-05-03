@@ -24,10 +24,10 @@ typedef struct object_t {
     char primary;
 } object_t;
 
-typedef struct storage_t {
-    object_t objects[100];
-    int size;
-} storage_t;
+//typedef struct storage_t {
+//    object_t objects[100];
+//    int size;
+//} storage_t;
 
 
 #endif //REPH_OBJECT_H
