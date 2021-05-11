@@ -33,19 +33,6 @@ map_entry_t gen_dummy_map(){
     return map_entry;
 }
 
-char * parse_json_to_string(FILE * fin){
-//    LOG("NOT IMPLEMENTED");
-    char * plane_map = (char *)malloc(sizeof(char) * DEFAULT_MAP_SIZE);
-    return plane_map;
-}
-
-map_entry_t parse_string_to_map_entry(char *map_repr){
-    LOG("NOT IMPLEMENTED");
-    map_entry_t map_entry;
-    map_entry.port = 0;
-    return map_entry;
-}
-
 void build_map_bucket(bucket_t * bucket, map_entry_t map_entry){
     init_bucket(bucket, map_entry.class, map_entry.type, map_entry.inner_size);
 
@@ -63,18 +50,6 @@ void build_map_bucket(bucket_t * bucket, map_entry_t map_entry){
     }
 }
 
-map_entry_t make_map_entry_from_string(char * map_string){
-// This function should parse json string to build map_entry_t - which is a raw
-// representation of the cluster
-//    LOG("NOT IMPLEMENTED");
-    return gen_dummy_map();
-}
-
-//char * get_string_map_representation(FILE * fin){
-//    char * string_map = parse_json_to_string(fin);
-//    return string_map;
-//}
-
 cluster_map_t * build_map(map_entry_t map_entry) {
     cluster_map_t * cluster_map = (cluster_map_t *)malloc(sizeof(cluster_map_t));
     cluster_map->root = (bucket_t *)malloc(sizeof(bucket_t));
@@ -82,25 +57,12 @@ cluster_map_t * build_map(map_entry_t map_entry) {
     return cluster_map;
 }
 
-//cluster_map_t * build_map_from_file(FILE * fin){
-//    char * string_map = get_string_map_representation(fin);
-//    map_entry_t map_entry = make_map_entry_from_string(string_map);
-//    return build_map(map_entry);
-//}
-//
-//cluster_map_t * build_map_from_string(char * plane_map){
-//    map_entry_t map_entry = make_map_entry_from_string(plane_map);
-//    cluster_map_t * cl = build_map(map_entry);
-//    return cl;
-//}
-
 cluster_map_t * build_default_map(){
     map_entry_t map_entry = gen_dummy_map();
     cluster_map_t * cl = build_map(map_entry);
     cl->version = 0;
     return cl;
 }
-
 
 int get_map_version(int sock, int * new_map_version){
     message_type_e message = GET_MAP_VERSION;

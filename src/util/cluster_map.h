@@ -12,8 +12,6 @@
 #include "src/util/general.h"
 
 #define DEFAULT_MAP_SIZE (2000)
-#define SHORT_MAP_SIZE (32)
-#define DEFAULT_BUCKET_STRING_LENGTH (2000)
 
 typedef struct cluster_map_t {
     bucket_t * root;
@@ -31,14 +29,9 @@ typedef struct map_entry_t {
 } map_entry_t;
 
 
-char * get_string_map_representation(FILE * fin);
-
 map_entry_t gen_dummy_device_map_entry();
 map_entry_t gen_dummy_map();
-map_entry_t make_map_entry_from_string(char *map_string);
 
-cluster_map_t * build_map_from_file(FILE * fin);
-cluster_map_t * build_map_from_string(char * plane_map);
 cluster_map_t * build_map(map_entry_t map_entry);
 cluster_map_t * init_empty_cluster_map();
 cluster_map_t * build_default_map();

@@ -526,7 +526,6 @@ _Noreturn void * poll_cluster_map(void * arg){
     pthread_mutex_unlock(&_params->mutex);
 
     while (1) {
-        // TODO: Need to update_map.. more frequently than recovery
         int rc;
         int i;
         int old_version = cluster_map->version;
@@ -564,16 +563,6 @@ int start_monitor_poller(net_config_t config, pthread_t * thread) {
     }
     pthread_mutex_lock(&params.mutex);
 
-    return (EXIT_SUCCESS);
-}
-
-int start_peer_poller(addr_port_t config, pthread_t * thread){
-    LOG("start_peer_poller NOT IMPLEMENTED");
-    return (EXIT_SUCCESS);
-}
-
-int start_peer_handler(addr_port_t config, pthread_t * thread){
-    LOG("start_peer_handler NOT IMPLEMENTED");
     return (EXIT_SUCCESS);
 }
 
@@ -768,10 +757,7 @@ int run(net_config_t config){
     LOG("Starting client and monitor handler");
     rc = start_client_and_monitor_handler(config.self, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
-//    rc = start_peer_poller(config.self, &threads[inc_(&thread_num)]);
-//    RETURN_ON_FAILURE(rc);
-//    rc = start_peer_handler(config.self, &threads[inc_(&thread_num)]);
-//    RETURN_ON_FAILURE(rc);
+
     LOG("Starting recovery");
     rc = start_recovery_process(config, &threads[inc_(&thread_num)]);
     RETURN_ON_FAILURE(rc);
@@ -794,9 +780,6 @@ int main(int argc, char ** argv){
     signal(SIGINT, intHandler);
     signal(SIGTERM, intHandler);
 
-//    primary_storage.size = 0;
-//    secondary_storage.size = 0;
-
     tree_hash_map_init(&primary_storage);
     tree_hash_map_init(&secondary_storage);
 
@@ -808,7 +791,6 @@ int main(int argc, char ** argv){
     self_config = config.self;
 
     cluster_map = init_empty_cluster_map();
-//    pthread_mutex_init(&cluster_map_mutex, NULL);
 
     fflush(NULL);
     return run(config);
