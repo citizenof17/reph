@@ -176,8 +176,8 @@ int update_map_if_needed(net_config_t config, cluster_map_t ** cluster_map){
 
     printf("New cluster map version %d\n", new_map_version);
 
-    char plane_cluster_map[DEFAULT_MAP_SIZE];
     if (new_map_version > (*cluster_map)->version || (*cluster_map)->version <= 0){
+        char plane_cluster_map[DEFAULT_MAP_SIZE];
         LOG("Cluster map version is updated, need to refresh its content");
         rc = get_cluster_map(sock, plane_cluster_map);
         RETURN_ON_FAILURE(rc);

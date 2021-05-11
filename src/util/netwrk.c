@@ -12,6 +12,10 @@
 #include "general.h"
 #include "src/util/log.h"
 
+
+int MONITOR_PORTS[MONITOR_COUNT] = {7331, 7332, 7333};
+
+
 // TODO: ensure there is no error in memory cleaning and returning local variable
 sockaddr_t make_local_addr(addr_port_t config){
     sockaddr_t local_addr;
@@ -154,4 +158,10 @@ int addr_cmp(addr_port_t * addr1, addr_port_t * addr2){
         return 0;
     }
     return addr1->port < addr2->port ? -1 : 1;
+}
+
+void init_config_transfer(config_transfer_t * transfer, net_config_t config){
+    transfer->config = config;
+    pthread_mutex_init(&transfer->mutex, NULL);
+    pthread_mutex_lock(&transfer->mutex);
 }

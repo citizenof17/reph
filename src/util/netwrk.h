@@ -12,7 +12,7 @@
 #define DEFAULT_CLIENT_PORT (1337)
 #define DEFAULT_MONITOR_PORT (7331)
 #define DEFAULT_OSD_PORT (4242)
-
+#define MONITOR_COUNT 3
 #define MAX_CLIENTS (100)
 
 typedef struct sockaddr_in sockaddr_t;
@@ -47,6 +47,11 @@ typedef struct socket_transfer_t {
     pthread_mutex_t mutex;
 } socket_transfer_t;
 
+typedef struct config_transfer_t {
+    net_config_t config;
+    pthread_mutex_t mutex;
+} config_transfer_t;
+
 int send_bye(int sock);
 
 sockaddr_t make_local_addr(addr_port_t config);
@@ -70,5 +75,7 @@ int saccept(int sock, int * new_sock);
 int sconnect(int sock, sockaddr_t * peer);
 
 int addr_cmp(addr_port_t * addr1, addr_port_t * addr2);
+
+void init_config_transfer(config_transfer_t * transfer, net_config_t config);
 
 #endif //REPH_NETWRK_H

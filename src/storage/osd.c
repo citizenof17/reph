@@ -18,6 +18,8 @@
 
 #define BETWEEN_PEER_PORT (10000)
 
+extern int MONITOR_PORTS[];
+
 int replicas_factor = 2;
 pthread_mutex_t cluster_map_mutex;
 cluster_map_t * cluster_map;
@@ -50,16 +52,6 @@ typedef struct object_with_addr_t {
     message_type_e message_type;
 } object_with_addr_t;
 
-typedef struct config_transfer_t {
-    net_config_t config;
-    pthread_mutex_t mutex;
-} config_transfer_t;
-
-void init_config_transfer(config_transfer_t * transfer, net_config_t config){
-    transfer->config = config;
-    pthread_mutex_init(&transfer->mutex, NULL);
-    pthread_mutex_lock(&transfer->mutex);
-}
 
 int init_config_from_input(addr_port_t *config, int argc, char ** argv){
     int c;
@@ -752,7 +744,7 @@ int inc_(int * counter){
 
 int run(net_config_t config){
     LOG("RUNNING");
-    const int total_number_of_threads = 5;
+    const int total_number_of_threads = 3;
     pthread_t threads[total_number_of_threads];
     int rc;
     int thread_num = 0;

@@ -13,14 +13,22 @@
 #include "src/util/netwrk.h"
 #include "src/util/log.h"
 #include "src/util/mysleep.h"
+#include "src/shortcuts.h"
 
-#define HEALTH_CHECK_DELAY (2 * 1000)  // ms to wait -> 1 min
+#define HEALTH_CHECK_DELAY (2 * 1000)  // ms to wait -> 1 min, currently 2 secs
 #define ALIVE (1)
 #define NOT_ALIVE (0)
 
+extern int MONITOR_PORTS[];
 
 char * plane_cluster_map;
 cluster_map_t * cluster_map;
+int is_main_monitor = False;
+int is_first_alive = False;
+int polling_needed = False;
+
+pthread_mutex_t cluster_map_mutex;
+
 
 int init_config_from_input(addr_port_t * config, int argc, char ** argv) {
     int c;
@@ -101,6 +109,7 @@ void * wait_for_client_connection(void * arg){
         rc = saccept(sock, &new_sock);
         VOID_RETURN_ON_FAILURE(rc);
 
+//        polling_needed = True;
         socket_transfer_t inner_params;
         init_socket_transfer(&inner_params, new_sock);
 
@@ -113,7 +122,6 @@ void * wait_for_client_connection(void * arg){
 
         pthread_mutex_lock(&inner_params.mutex);
 
-//        cluster_map_version++;
         pthread_join(thread, NULL);
         close(new_sock);
     }
@@ -146,7 +154,9 @@ void update_cluster_map(){
     cluster_map->version++;
     free(plane_cluster_map);
 
+    pthread_mutex_lock(&cluster_map_mutex);
     plane_cluster_map = cluster_map_to_string(cluster_map);
+    pthread_mutex_unlock(&cluster_map_mutex);
 
     printf("Plane cluster map: %s\n", plane_cluster_map);
     print_cluster_map(cluster_map);
@@ -211,14 +221,19 @@ int dfs_check_devices(bucket_t * bucket){
 
 _Noreturn void * osd_poller(void * arg){
     while(1){
-        LOG("Start device liveness check");
-        int state_changed = dfs_check_devices(cluster_map->root);
-        if (state_changed) {
-            LOG("State changed");
-            update_cluster_map();
+        if (is_first_alive) {
+            LOG("Start device liveness check");
+            pthread_mutex_lock(&cluster_map_mutex);
+            int state_changed = dfs_check_devices(cluster_map->root);
+            pthread_mutex_unlock(&cluster_map_mutex);
+
+            if (state_changed) {
+                LOG("State changed");
+                update_cluster_map();
+            }
+            LOG("Sleeping until next osd polling");
+            mysleep(HEALTH_CHECK_DELAY);
         }
-        LOG("Sleeping until next osd polling");
-        mysleep(HEALTH_CHECK_DELAY);
     }
 }
 
@@ -228,9 +243,71 @@ int start_osd_poller(pthread_t * osd_thread){
     return (EXIT_SUCCESS);
 }
 
+_Noreturn void * poll_cluster_map(void * arg){
+    config_transfer_t * _params = arg;
+    net_config_t config = _params->config;
+    pthread_mutex_unlock(&_params->mutex);
+
+    while(1) {
+        int i;
+        int my_pos = -1;
+        for (i = 0; i < MONITOR_COUNT; i++) {
+            if (config.self.port == MONITOR_PORTS[i]) {
+                my_pos = i;
+                break;
+            }
+        }
+
+        int rc;
+        int temp_first_alive = True;
+        for (i = 0; i < MONITOR_COUNT; i++) {
+            if (i == my_pos) {
+                continue;
+            }
+
+            config.monitor.port = MONITOR_PORTS[i];
+            pthread_mutex_lock(&cluster_map_mutex);
+            rc = update_map_if_needed(config, &cluster_map);
+            pthread_mutex_unlock(&cluster_map_mutex);
+
+            if (rc == EXIT_SUCCESS and i < my_pos) {
+                temp_first_alive = False;
+            }
+        }
+        is_first_alive = temp_first_alive;
+        mysleep(10000);
+    }
+}
+
+int start_monitor_poller(addr_port_t config, pthread_t * thread) {
+    config_transfer_t params;
+    net_config_t conf = {
+            .self = config,
+            .monitor = {
+                    .addr = DEFAULT_ADDR,
+                    .port = -1,
+            }
+    };
+    init_config_transfer(&params, conf);
+
+    int rc;
+    rc = pthread_create(thread, NULL, poll_cluster_map, &params);
+    if (rc != 0) {
+        perror("Error creating thread");
+        return (EXIT_FAILURE);
+    }
+    pthread_mutex_lock(&params.mutex);
+
+    return (EXIT_SUCCESS);
+}
+
 int run(addr_port_t config){
     LOG("Running monitor");
     int rc;
+
+    pthread_t monitor_poller_thread;
+    rc = start_monitor_poller(config, &monitor_poller_thread);
+    RETURN_ON_FAILURE(rc);
 
     pthread_t client_handler_thread;
     rc = start_client_handler(config, &client_handler_thread);
@@ -248,6 +325,9 @@ int run(addr_port_t config){
 int main(int argc, char ** argv){
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
+
+    is_main_monitor = config.port == DEFAULT_MONITOR_PORT;
+    is_first_alive = is_main_monitor;
 
     // TODO: Read map filepath from input
     cluster_map = cluster_map_from_file("/home/pavel/reph/sample_cluster.txt");
