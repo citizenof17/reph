@@ -23,9 +23,7 @@ extern int MONITOR_PORTS[];
 
 char * plane_cluster_map;
 cluster_map_t * cluster_map;
-int is_main_monitor = False;
 int is_first_alive = False;
-int polling_needed = False;
 
 pthread_mutex_t cluster_map_mutex;
 
@@ -103,13 +101,10 @@ void * wait_for_client_connection(void * arg){
     printf("SOCK VALUE IS %d\n", sock);
 
     while (1){
-        printf("Cluster map version is %d\n", cluster_map->version);
-
         int new_sock;
         rc = saccept(sock, &new_sock);
         VOID_RETURN_ON_FAILURE(rc);
 
-//        polling_needed = True;
         socket_transfer_t inner_params;
         init_socket_transfer(&inner_params, new_sock);
 
@@ -189,7 +184,6 @@ int poll_osd(device_t * device){
     device->state = UNKNOWN;
 
     int sock, rc;
-//    LOG("poll_osd fun");
     rc = connect_to_peer(&sock, device->location);
     if (rc != (EXIT_SUCCESS)) {
         device->state = DOWN;
@@ -207,7 +201,6 @@ int poll_osd(device_t * device){
 
 int dfs_check_devices(bucket_t * bucket){
     int state_changed = 0;
-//    printf("Bucket is: %d %d\n", bucket->class, bucket->type);
     if (bucket->class == DEVICE){
         state_changed |= poll_osd(bucket->device);
     }
@@ -326,12 +319,10 @@ int main(int argc, char ** argv){
     addr_port_t config = make_default_config();
     init_config_from_input(&config, argc, argv);
 
-    is_main_monitor = config.port == DEFAULT_MONITOR_PORT;
-    is_first_alive = is_main_monitor;
+    is_first_alive = config.port == DEFAULT_MONITOR_PORT;
 
     // TODO: Read map filepath from input
     cluster_map = cluster_map_from_file("/home/pavel/reph/sample_cluster.txt");
-//    cluster_map = build_default_map();
     plane_cluster_map = cluster_map_to_string(cluster_map);
     print_cluster_map(cluster_map);
 

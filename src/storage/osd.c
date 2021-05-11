@@ -21,7 +21,7 @@
 extern int MONITOR_PORTS[];
 
 int replicas_factor = 2;
-pthread_mutex_t cluster_map_mutex;
+//pthread_mutex_t cluster_map_mutex;
 cluster_map_t * cluster_map;
 addr_port_t self_config;
 
@@ -520,7 +520,7 @@ int start_client_and_monitor_handler(addr_port_t config, pthread_t * thread){
     return (EXIT_SUCCESS);
 }
 
-void * poll_cluster_map(void * arg){
+_Noreturn void * poll_cluster_map(void * arg){
     config_transfer_t * _params = arg;
     net_config_t config = _params->config;
     pthread_mutex_unlock(&_params->mutex);
@@ -528,11 +528,20 @@ void * poll_cluster_map(void * arg){
     while (1) {
         // TODO: Need to update_map.. more frequently than recovery
         int rc;
+        int i;
         int old_version = cluster_map->version;
-        pthread_mutex_lock(&cluster_map_mutex);
-        rc = update_map_if_needed(config, &cluster_map);
-        pthread_mutex_unlock(&cluster_map_mutex);
-        VOID_RETURN_ON_FAILURE(rc);
+
+        for (i = 0; i < MONITOR_COUNT; i++) {
+            config.monitor.port = MONITOR_PORTS[i];
+//            pthread_mutex_lock(&cluster_map_mutex);
+            rc = update_map_if_needed(config, &cluster_map);
+//            pthread_mutex_unlock(&cluster_map_mutex);
+
+            if (rc == EXIT_SUCCESS) {
+                // Found first alive monitor, further iteration is not needed
+                break;
+            }
+        }
 
         if (cluster_map->version > old_version){
             pthread_mutex_lock(&recovery_mutex);
@@ -799,7 +808,7 @@ int main(int argc, char ** argv){
     self_config = config.self;
 
     cluster_map = init_empty_cluster_map();
-    pthread_mutex_init(&cluster_map_mutex, NULL);
+//    pthread_mutex_init(&cluster_map_mutex, NULL);
 
     fflush(NULL);
     return run(config);

@@ -18,6 +18,8 @@
 
 #define POSSIBLE_OPERATIONS_COUNT (4)
 
+extern int MONITOR_PORTS[];
+
 cluster_map_t * cluster_map;
 
 storage_linear_t storage;
@@ -414,7 +416,18 @@ int perform_some_action(){
 int run(net_config_t config){
     while(1){
         int rc;
-        rc = update_map_if_needed(config, &cluster_map);
+        int i;
+        for (i = 0; i < MONITOR_COUNT; i++) {
+            config.monitor.port = MONITOR_PORTS[i];
+            rc = update_map_if_needed(config, &cluster_map);
+
+            if (rc == EXIT_SUCCESS) {
+                // Found first alive monitor, further iteration is not needed
+                break;
+            }
+        }
+
+//        rc = update_map_if_needed(config, &cluster_map);
         RETURN_ON_FAILURE(rc);
 
         rc = perform_some_action();

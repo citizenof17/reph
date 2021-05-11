@@ -157,7 +157,7 @@ void free_bucket(bucket_t * bucket){
 }
 
 void free_map(cluster_map_t ** cluster_map){
-    // TODO: Fix freeing here. Something is wrong
+    // TODO: Fix freeing here. Something is wrong?
     free_bucket((*cluster_map)->root);
     free(*cluster_map);
     *cluster_map = NULL;
@@ -174,10 +174,9 @@ int update_map_if_needed(net_config_t config, cluster_map_t ** cluster_map){
     rc = get_map_version(sock, &new_map_version);
     RETURN_ON_FAILURE(rc);
 
-    printf("New cluster map version %d\n", new_map_version);
-
     if (new_map_version > (*cluster_map)->version || (*cluster_map)->version <= 0){
         char plane_cluster_map[DEFAULT_MAP_SIZE];
+        printf("New cluster map version %d\n", new_map_version);
         LOG("Cluster map version is updated, need to refresh its content");
         rc = get_cluster_map(sock, plane_cluster_map);
         RETURN_ON_FAILURE(rc);
